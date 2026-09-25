@@ -5,7 +5,7 @@ O que é o RolêApp?
 O RolêApp é um aplicativo mobile para busca mais fácil e rápida de lugares baratos e de fácil 
 acesso para um “rolê”.
 
-Com a dificuldade entre jovens adultos, famílias e turistas e consumidores econômicos de: 
+Com a dificuldade entre jovens adultos, famílias, turistas e consumidores econômicos de: 
 - Encontrar opções de lugares que se encaixem no orçamento disponível;
 - A ausência de filtros financeiros personalizados em aplicativos como Google Maps e TripAdviso;
 - Informações distribuídas em múltiplas plataformas (restaurantes, turismo, compras e passeios);

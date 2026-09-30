@@ -36,7 +36,7 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
   const getTabIcon = (routeName) => {
     switch (routeName) {
       case 'Home':
-      case 'In??cio':
+      case 'Início':
         return 'home';
       case 'Favoritos':
         return 'heart';
@@ -52,7 +52,7 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
   const getTabLabel = (routeName) => {
     switch (routeName) {
       case 'Home':
-        return 'In??cio';
+        return 'Início';
       default:
         return routeName;
     }

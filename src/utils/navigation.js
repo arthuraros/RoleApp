@@ -11,6 +11,7 @@ import { CustomTabBar } from '../components/CustomTabBar';
 import { LoginScreen } from '../screens/LoginScreen';
 import { CadastroScreen } from '../screens/CadastroScreen';
 import { RecuperacaoScreen } from '../screens/RecuperacaoScreen';
+import { RedefinirSenhaScreen } from '../screens/RedefinirSenhaScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { FavoritosScreen } from '../screens/FavoritosScreen';
 import { MapaScreen } from '../screens/MapaScreen';
@@ -25,6 +26,7 @@ function AuthNavigator() {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Cadastro" component={CadastroScreen} />
       <Stack.Screen name="Recuperacao" component={RecuperacaoScreen} />
+      <Stack.Screen name="RedefinirSenha" component={RedefinirSenhaScreen} />
     </Stack.Navigator>
   );
 }
@@ -55,11 +57,19 @@ const styles = StyleSheet.create({
 });
 
 export function Navigation() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isPasswordRecovery } = useAuth();
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+      {isPasswordRecovery ? (
+        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          <Stack.Screen name="RedefinirSenha" component={RedefinirSenhaScreen} />
+        </Stack.Navigator>
+      ) : isAuthenticated ? (
+        <AppNavigator />
+      ) : (
+        <AuthNavigator />
+      )}
     </NavigationContainer>
   );
 }

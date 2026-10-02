@@ -1,9 +1,17 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Alert, AppState } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { getFriendlyAuthErrorMessage } from '../utils/authErrors';
+
+const APP_REDIRECT_URL = 'roleapp://auth/callback';
+const RESET_PASSWORD_REDIRECT_URL = 'roleapp://reset-password';
+const RECOVERY_PENDING_KEY = '@roleapp_password_recovery_pending';
 
 const AuthContext = createContext({});
 
@@ -13,32 +21,243 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [confirmedNotice, setConfirmedNotice] = useState(null);
+
+  const incomingUrl = Linking.useLinkingURL();
+  const lastProcessed = useRef({ url: null, timestamp: 0 });
+
+  const handleDeepLink = async (url) => {
+    if (!url) return;
+    const now = Date.now();
+    if (lastProcessed.current.url === url && now - lastProcessed.current.timestamp < 1500) {
+      return;
+    }
+    lastProcessed.current = { url, timestamp: now };
+    console.log('[DeepLink] Processando URL:', url);
+
+    try {
+      const { params, errorCode } = QueryParams.getQueryParams(url);
+
+      if (errorCode || params.error || params.error_description) {
+        const msg = errorCode || params.error_description || params.error;
+        const friendlyMsg = getFriendlyAuthErrorMessage(msg);
+        Alert.alert('Atenção', friendlyMsg);
+        setError(friendlyMsg);
+        Linking.clearInitialURL?.();
+        return;
+      }
+
+      const isRecovery = params.type === 'recovery' || url.includes('reset-password');
+      if (isRecovery) {
+        await AsyncStorage.setItem(RECOVERY_PENDING_KEY, 'true');
+        setIsPasswordRecovery(true);
+      }
+
+      const isSignupConfirmation =
+        !isRecovery &&
+        (params.type === 'signup' ||
+          params.type === 'email_confirmation' ||
+          url.includes('auth/callback') ||
+          url.includes('type=signup'));
+
+      if (isSignupConfirmation) {
+        setConfirmedNotice({
+          title: 'E-mail confirmado!',
+          subtitle: 'Entrando no aplicativo...',
+        });
+      }
+
+      if (params.access_token && params.refresh_token) {
+        const { data, error: sessionErr } = await supabase.auth.setSession({
+          access_token: params.access_token,
+          refresh_token: params.refresh_token,
+        });
+        if (sessionErr) throw sessionErr;
+
+        if (isSignupConfirmation) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          setConfirmedNotice(null);
+        }
+
+        if (data?.session) {
+          setSession(data.session);
+          setUser(data.session.user);
+        }
+        Linking.clearInitialURL?.();
+        return;
+      }
+
+      if (params.code) {
+        try {
+          const { data, error: pkceErr } = await supabase.auth.exchangeCodeForSession(params.code);
+          if (pkceErr) throw pkceErr;
+
+          if (isSignupConfirmation) {
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            setConfirmedNotice(null);
+          }
+
+          if (data?.session) {
+            setSession(data.session);
+            setUser(data.session.user);
+          }
+          Linking.clearInitialURL?.();
+          return;
+        } catch (pkceErr) {
+          console.warn('[DeepLink] Erro na troca de código PKCE:', pkceErr);
+          if (isSignupConfirmation) {
+            setConfirmedNotice({
+              title: 'E-mail confirmado!',
+              subtitle: 'Redirecionando para login...',
+            });
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            setConfirmedNotice(null);
+          }
+          Linking.clearInitialURL?.();
+          return;
+        }
+      }
+
+      if (params.token_hash || params.token) {
+        const tokenHash = params.token_hash || params.token;
+        const otpType = isRecovery ? 'recovery' : 'email';
+        const { data, error: otpErr } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: otpType,
+        });
+        if (otpErr) throw otpErr;
+
+        if (isSignupConfirmation) {
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          setConfirmedNotice(null);
+        }
+
+        if (data?.session) {
+          setSession(data.session);
+          setUser(data.session.user);
+        }
+        Linking.clearInitialURL?.();
+        return;
+      }
+
+      if (isSignupConfirmation) {
+        setConfirmedNotice({
+          title: 'E-mail confirmado!',
+          subtitle: 'Redirecionando para login...',
+        });
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        setConfirmedNotice(null);
+        Linking.clearInitialURL?.();
+        return;
+      }
+
+      Linking.clearInitialURL?.();
+    } catch (err) {
+      console.warn('[DeepLink] Erro ao processar:', err);
+      setConfirmedNotice(null);
+      if (url.includes('reset-password') || url.includes('type=recovery')) {
+        setIsPasswordRecovery(false);
+        await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+      }
+      setError(getFriendlyAuthErrorMessage(err));
+      Linking.clearInitialURL?.();
+    }
+  };
 
   useEffect(() => {
-    // Se o Supabase estiver configurado, recupera a sessão ativa salva no AsyncStorage
-    if (isSupabaseConfigured) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }).catch((err) => {
-        console.warn('Erro ao restaurar sessão do Supabase:', err);
-        setLoading(false);
-      });
+    if (incomingUrl) {
+      handleDeepLink(incomingUrl);
+    }
+  }, [incomingUrl]);
 
-      // Listener em tempo real para mudanças no estado de autenticação
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+  useEffect(() => {
+    const sub = Linking.addEventListener('url', (event) => {
+      if (event?.url) {
+        handleDeepLink(event.url);
+      }
+    });
+
+    const appStateSub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        const currentUrl = Linking.getLinkingURL?.();
+        if (currentUrl) {
+          handleDeepLink(currentUrl);
+        }
+      }
+    });
+
+    return () => {
+      sub.remove();
+      appStateSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initAuth() {
+      if (!isSupabaseConfigured) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
+      try {
+        const currentLaunchUrl = Linking.getLinkingURL?.();
+        const isLaunchingWithRecoveryUrl =
+          Boolean(currentLaunchUrl) &&
+          (currentLaunchUrl.includes('reset-password') || currentLaunchUrl.includes('type=recovery'));
+
+        const pendingRecovery = await AsyncStorage.getItem(RECOVERY_PENDING_KEY);
+        if (pendingRecovery === 'true' && !isLaunchingWithRecoveryUrl) {
+          console.log('[Auth] Recuperação de senha abandonada detectada. Deslogando...');
+          await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+          await supabase.auth.signOut();
+          if (isMounted) {
+            setSession(null);
+            setUser(null);
+            setIsPasswordRecovery(false);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (isMounted) {
+          setSession(session);
+          setUser(session?.user ?? null);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.warn('Erro ao restaurar sessão do Supabase:', err);
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    initAuth();
+
+    if (isSupabaseConfigured) {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (!isMounted) return;
+
+        if (event === 'PASSWORD_RECOVERY') {
+          await AsyncStorage.setItem(RECOVERY_PENDING_KEY, 'true');
+          setIsPasswordRecovery(true);
+        }
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
       });
 
       return () => {
+        isMounted = false;
         subscription.unsubscribe();
       };
     } else {
-      // Modo local simulado enquanto o usuário não cola suas chaves
       setLoading(false);
+      return () => {
+        isMounted = false;
+      };
     }
   }, []);
 
@@ -92,12 +311,12 @@ export function AuthProvider({ children }) {
           password,
           options: {
             data: metadata,
+            emailRedirectTo: APP_REDIRECT_URL,
           },
         });
 
         if (error) throw error;
 
-        // Se o Supabase exigir confirmação de e-mail, session pode ser null
         if (data.session) {
           setUser(data.user);
           setSession(data.session);
@@ -136,7 +355,9 @@ export function AuthProvider({ children }) {
       }
 
       if (isSupabaseConfigured) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: RESET_PASSWORD_REDIRECT_URL,
+        });
         if (error) throw error;
       }
 
@@ -182,8 +403,8 @@ export function AuthProvider({ children }) {
         if (res.type === 'success' && res.url) {
           const { params, errorCode } = QueryParams.getQueryParams(res.url);
 
-          if (errorCode) {
-            throw new Error(errorCode);
+          if (errorCode || params.error_description || params.error) {
+            throw new Error(errorCode || params.error_description || params.error);
           }
 
           if (params.access_token && params.refresh_token) {
@@ -209,11 +430,8 @@ export function AuthProvider({ children }) {
             throw new Error(params.error_description || params.error);
           }
         }
-
-        // Se o usuário cancelou ou fechou a janela
         return { success: false, cancelled: true };
       } else {
-        // Fallback para desenvolvimento local sem backend Supabase configurado
         const mockUser = {
           id: 'google-dev-123',
           email: 'usuario.google@gmail.com',
@@ -235,18 +453,63 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const cancelPasswordRecovery = async () => {
+    await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+    setIsPasswordRecovery(false);
+    await logout();
+  };
+
+  const updatePassword = async (newPassword) => {
+    setAuthLoading(true);
+    setError(null);
+
+    try {
+      if (!newPassword || newPassword.length < 8) {
+        throw new Error('A nova senha deve ter no mínimo 8 caracteres.');
+      }
+
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) throw error;
+
+        await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+        setIsPasswordRecovery(false);
+        if (data?.user) {
+          setUser(data.user);
+        }
+        return { success: true, user: data.user };
+      } else {
+        await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
+        setIsPasswordRecovery(false);
+        return { success: true };
+      }
+    } catch (err) {
+      const friendlyMessage = getFriendlyAuthErrorMessage(err);
+      setError(friendlyMessage);
+      return { success: false, error: friendlyMessage };
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const logout = async () => {
     setAuthLoading(true);
     try {
+      await AsyncStorage.removeItem(RECOVERY_PENDING_KEY);
       if (isSupabaseConfigured) {
         await supabase.auth.signOut();
       }
       setUser(null);
       setSession(null);
+      setIsPasswordRecovery(false);
     } catch (err) {
       console.warn('Erro ao deslogar:', err);
       setUser(null);
       setSession(null);
+      setIsPasswordRecovery(false);
     } finally {
       setAuthLoading(false);
     }
@@ -267,6 +530,9 @@ export function AuthProvider({ children }) {
         clearError,
         isAuthenticated,
         isSupabaseConfigured,
+        isPasswordRecovery,
+        updatePassword,
+        cancelPasswordRecovery,
         login,
         register,
         loginWithGoogle,
@@ -275,9 +541,67 @@ export function AuthProvider({ children }) {
       }}
     >
       {children}
+      {confirmedNotice ? (
+        <View style={styles.toastContainer} pointerEvents="none">
+          <View style={styles.toastCard}>
+            <View style={styles.toastIconWrapper}>
+              <Feather name="check-circle" size={24} color="#10B981" />
+            </View>
+            <View style={styles.toastTextWrapper}>
+              <Text style={styles.toastTitle}>{confirmedNotice.title}</Text>
+              <Text style={styles.toastSubtitle}>{confirmedNotice.subtitle}</Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </AuthContext.Provider>
   );
 }
+
+const styles = StyleSheet.create({
+  toastContainer: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    right: 20,
+    zIndex: 99999,
+    alignItems: 'center',
+  },
+  toastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#090A1A',
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    width: '100%',
+  },
+  toastIconWrapper: {
+    marginRight: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toastTextWrapper: {
+    flex: 1,
+  },
+  toastTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  toastSubtitle: {
+    color: '#94A3B8',
+    fontSize: 13,
+    marginTop: 2,
+  },
+});
 
 export function useAuth() {
   const context = useContext(AuthContext);
@@ -288,3 +612,4 @@ export function useAuth() {
 }
 
 export default AuthContext;
+

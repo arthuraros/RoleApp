@@ -1,4 +1,7 @@
 import { registerRootComponent } from 'expo';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 import App from './App';
 

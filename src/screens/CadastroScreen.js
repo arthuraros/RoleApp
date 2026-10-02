@@ -14,12 +14,21 @@ import { AuthInput } from '../components/AuthInput';
 import { SocialButtons } from '../components/SocialButtons';
 
 export function CadastroScreen({ navigation }) {
-  const { register, authLoading, error, clearError } = useAuth();
+  const { register, loginWithGoogle, authLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [localError, setLocalError] = useState('');
+
+  const handleGoogleRegister = async () => {
+    setLocalError('');
+    clearError();
+    const result = await loginWithGoogle();
+    if (!result.success && result.error) {
+      setLocalError(result.error);
+    }
+  };
 
   const handleRegister = async () => {
     setLocalError('');
@@ -153,9 +162,11 @@ export function CadastroScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Botões Sociais Google e Facebook */}
+      {/* Botão Social Google */}
       <SocialButtons
-        onGooglePress={() => alert('Cadastro com Google em desenvolvimento')}
+        onGooglePress={handleGoogleRegister}
+        text="Continuar com o Google"
+        loading={authLoading}
       />
     </AuthLayout>
   );

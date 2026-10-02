@@ -13,11 +13,20 @@ import { AuthInput } from '../components/AuthInput';
 import { SocialButtons } from '../components/SocialButtons';
 
 export function LoginScreen({ navigation }) {
-  const { login, authLoading, error, clearError } = useAuth();
+  const { login, loginWithGoogle, authLoading, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [localError, setLocalError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    setLocalError('');
+    clearError();
+    const result = await loginWithGoogle();
+    if (!result.success && result.error) {
+      setLocalError(result.error);
+    }
+  };
 
   const handleLogin = async () => {
     setLocalError('');
@@ -114,12 +123,11 @@ export function LoginScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Botões Sociais Google e Facebook */}
+      {/* Botão Social Google */}
       <SocialButtons
-        onGooglePress={() => {
-          // Placeholder para OAuth social
-          alert('Login com Google em desenvolvimento');
-        }}
+        onGooglePress={handleGoogleLogin}
+        text="Fazer Login com o Google"
+        loading={authLoading}
       />
     </AuthLayout>
   );

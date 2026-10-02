@@ -1,21 +1,25 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { FontAwesome5 } from '@expo/vector-icons';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { spacing } from '../utils/theme';
 
-export function SocialButtons({ onGooglePress }) {
+export function SocialButtons({ onGooglePress, text, loading = false }) {
   return (
     <View style={styles.container}>
-      <View style={styles.buttonsRow}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={onGooglePress}
-          style={styles.socialCircle}
-          accessibilityLabel="Entrar com Google"
-        >
-          <FontAwesome5 name="google" size={24} color="#EA4335" />
-          <Text style={styles.text}>Fazer Login com o Google</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onGooglePress}
+        disabled={loading}
+        style={[styles.socialCircle, loading && styles.socialCircleDisabled]}
+        accessibilityLabel="Entrar com Google"
+      >
+        {loading ? (
+          <ActivityIndicator color="#090A1A" size="small" />
+        ) : (
+          <>
+            <Image source={require('../../assets/Google.png')} style={styles.googleIcon} />
+            <Text style={styles.text}>{text}</Text>
+          </>
+        )}
+      </TouchableOpacity>
     </View>
   );
 }
@@ -26,14 +30,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
     width: '100%',
   },
-  buttonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-  },
   text: {
     fontWeight: 500,
+  },
+  googleIcon: {
+    width: 30,
+    height: 30,
+    objectFit: 'contain'
   },
   socialCircle: {
     width: '100%',
@@ -50,6 +53,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 4,
     flexDirection: 'row',
-    gap: 20,
+    gap: spacing.md,
+  },
+  socialCircleDisabled: {
+    opacity: 0.6,
   },
 });

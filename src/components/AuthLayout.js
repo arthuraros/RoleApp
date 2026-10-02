@@ -6,6 +6,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,22 +37,15 @@ export function AuthLayout({
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.card}>
-              {/* Header com Logo e Mascote */}
               <View style={styles.brandRow}>
-                <View style={styles.logoTextWrapper}>
-                  <Text style={styles.logoRole}>Rolê</Text>
-                  <Text style={styles.logoApp}>App</Text>
-                </View>
                 <View style={styles.mascotBadge}>
-                  <FontAwesome5 name="piggy-bank" size={26} color="#F472B6" />
+                  <Image source={require('../../assets/logoName.png')} style={styles.mascotIcon}/>
                 </View>
               </View>
 
-              {/* Título e Subtítulo */}
               {title ? <Text style={styles.title}>{title}</Text> : null}
               {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
 
-              {/* Caixa de Erro */}
               {error ? (
                 <View style={styles.errorBox}>
                   <Feather name="alert-circle" size={16} color="#DC2626" style={styles.errorIcon} />
@@ -59,7 +53,6 @@ export function AuthLayout({
                 </View>
               ) : null}
 
-              {/* Formulário / Ações */}
               {children}
             </View>
           </ScrollView>
@@ -104,33 +97,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  logoTextWrapper: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  logoRole: {
-    fontSize: 32,
-    fontWeight: '900',
-    fontStyle: 'italic',
-    color: '#D91A2A',
-    letterSpacing: -0.5,
-  },
-  logoApp: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#090A1A',
-    letterSpacing: -0.5,
-  },
   mascotBadge: {
     marginLeft: 8,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sunglassesIcon: {
-    position: 'absolute',
-    top: 5,
-    left: 4,
+  mascotIcon: {
+    width: 250,
+    height: 70,
+    objectFit: 'contain'
   },
   title: {
     fontSize: 18,

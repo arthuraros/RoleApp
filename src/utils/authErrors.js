@@ -35,5 +35,13 @@ export function getFriendlyAuthErrorMessage(error) {
     return 'Muitas tentativas em pouco tempo. Aguarde alguns instantes.';
   }
 
+  if (lowerMessage.includes('provider is not enabled') || lowerMessage.includes('unsupported provider')) {
+    return 'O provedor Google ainda não foi ativado no painel do Supabase.';
+  }
+
+  if (lowerMessage.includes('access_denied') || lowerMessage.includes('cancelled') || lowerMessage.includes('canceled')) {
+    return 'Autenticação com Google cancelada.';
+  }
+
   return message || 'Ocorreu um erro na autenticação. Tente novamente.';
 }

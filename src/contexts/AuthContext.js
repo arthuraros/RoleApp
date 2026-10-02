@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { getFriendlyAuthErrorMessage } from '../utils/authErrors';
 
@@ -150,6 +153,88 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const loginWithGoogle = async () => {
+    setAuthLoading(true);
+    setError(null);
+
+    try {
+      if (isSupabaseConfigured) {
+        const redirectTo = makeRedirectUri({
+          scheme: 'roleapp',
+        });
+
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo,
+            skipBrowserRedirect: true,
+          },
+        });
+
+        if (error) throw error;
+
+        if (!data?.url) {
+          throw new Error('Não foi possível obter a URL de autenticação do Google.');
+        }
+
+        const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+        if (res.type === 'success' && res.url) {
+          const { params, errorCode } = QueryParams.getQueryParams(res.url);
+
+          if (errorCode) {
+            throw new Error(errorCode);
+          }
+
+          if (params.access_token && params.refresh_token) {
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+              access_token: params.access_token,
+              refresh_token: params.refresh_token,
+            });
+
+            if (sessionError) throw sessionError;
+
+            setUser(sessionData.user);
+            setSession(sessionData.session);
+            return { success: true, user: sessionData.user };
+          } else if (params.code) {
+            const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(params.code);
+
+            if (exchangeError) throw exchangeError;
+
+            setUser(exchangeData.user);
+            setSession(exchangeData.session);
+            return { success: true, user: exchangeData.user };
+          } else if (params.error_description || params.error) {
+            throw new Error(params.error_description || params.error);
+          }
+        }
+
+        // Se o usuário cancelou ou fechou a janela
+        return { success: false, cancelled: true };
+      } else {
+        // Fallback para desenvolvimento local sem backend Supabase configurado
+        const mockUser = {
+          id: 'google-dev-123',
+          email: 'usuario.google@gmail.com',
+          user_metadata: {
+            name: 'Usuário Google',
+            full_name: 'Usuário Google',
+            avatar_url: 'https://lh3.googleusercontent.com/a/default-user',
+          },
+        };
+        setUser(mockUser);
+        return { success: true, user: mockUser };
+      }
+    } catch (err) {
+      const friendlyMessage = getFriendlyAuthErrorMessage(err);
+      setError(friendlyMessage);
+      return { success: false, error: friendlyMessage };
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const logout = async () => {
     setAuthLoading(true);
     try {
@@ -184,6 +269,7 @@ export function AuthProvider({ children }) {
         isSupabaseConfigured,
         login,
         register,
+        loginWithGoogle,
         resetPassword,
         logout,
       }}

@@ -272,14 +272,6 @@ export function AuthProvider({ children }) {
           password,
         });
 
-        const mockUser = {
-          id: 'dev-123',
-          email: email.trim() || 'usuario@exemplo.com',
-          user_metadata: { name: 'Usuário RolêApp' },
-        };
-        setUser(mockUser);
-        return { success: true, user: mockUser };
-
         if (error) throw error;
 
         setUser(data.user);

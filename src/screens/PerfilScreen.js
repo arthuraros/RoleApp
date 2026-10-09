@@ -16,7 +16,7 @@ export function PerfilScreen() {
   const { user, logout } = useAuth();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Gradiente fixo apenas na parte superior do fundo */}
       <LinearGradient
         colors={['#1E1848', '#483AAE', '#FFFFFF']}
@@ -136,7 +136,7 @@ export function PerfilScreen() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -160,7 +160,6 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    paddingTop: 10,
     paddingBottom: 20,
     position: 'relative',
   },
@@ -179,7 +178,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#342B76',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
     marginBottom: 8,
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.2)',

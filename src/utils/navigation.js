@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import * as SplashScreen from 'expo-splash-screen';
 import { StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -57,10 +58,19 @@ const styles = StyleSheet.create({
 });
 
 export function Navigation() {
-  const { isAuthenticated, isPasswordRecovery } = useAuth();
+  const { isAuthenticated, isPasswordRecovery, loading } = useAuth();
+const handleNavigationReady = React.useCallback(() => {
+  SplashScreen.hideAsync().catch((error) => {
+    console.warn('Erro ao ocultar SplashScreen:', error);
+  });
+}, []);
+
+  if (loading) {
+    return null;
+  }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer onReady={handleNavigationReady}>
       {isPasswordRecovery ? (
         <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <Stack.Screen name="RedefinirSenha" component={RedefinirSenhaScreen} />
@@ -73,5 +83,4 @@ export function Navigation() {
     </NavigationContainer>
   );
 }
-
 export default Navigation;

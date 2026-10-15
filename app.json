@@ -2,6 +2,7 @@
   "expo": {
     "name": "roleApp",
     "slug": "roleApp",
+    "scheme": "roleapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -34,7 +35,8 @@
             "backgroundColor": "#1D173F"
           }
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

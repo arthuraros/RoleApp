@@ -15,10 +15,26 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "package": "com.thekaiiros.roleApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-logo.png",
+          "imageWidth": 150,
+          "resizeMode": "contain",
+          "backgroundColor": "#1D173F",
+          "dark": {
+            "image": "./assets/splash-logo.png",
+            "backgroundColor": "#1D173F"
+          }
+        }
+      ]
+    ]
   }
 }

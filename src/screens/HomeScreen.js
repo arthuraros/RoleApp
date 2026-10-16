@@ -189,7 +189,7 @@ setLocais(
             <Text style={styles.nome}>{item.nome}</Text>
             <Text style={styles.endereco}>{item.endereco}</Text>
             <Text style={styles.preco}>
-              {item.preco_entrada === 0 ? 'Gratuito' : `Entrada: R$ ${item.preco_entrada}`}
+              {!item.preco_entrada ? 'Gratuito' : `Entrada: R$ ${item.preco_entrada}`}
             </Text>
           </View>
         )}

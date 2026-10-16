@@ -69,13 +69,11 @@ export function MainLayout({
 
       {/* Conteúdo com Fundo Branco */}
       <View style={styles.body}>
-        <View
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+          <View style={styles.contentContainer}>
           {/* Carrossel de Mascotes / Categorias */}
           <ScrollView
             horizontal
+            style={styles.categoriesContainer}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoriesScroll}
           >
@@ -110,8 +108,14 @@ export function MainLayout({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1E1B4B', // Roxo escuro do header
+    backgroundColor: '#1E1B4B',
+  },// Roxo escuro do header
+    contentContainer: {
+    flex: 1,
   },
+  categoriesContainer: {
+  flexGrow: 0,
+},
   header: {
     paddingHorizontal: 16,
     paddingTop: Platform.OS === 'android' ? 12 : 8,

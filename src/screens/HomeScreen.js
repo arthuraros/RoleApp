@@ -1,22 +1,100 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { MainLayout } from '../components/MainLayout';
+import { Feather } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
+import { favoritosService } from '../services/favoritosService';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 export function HomeScreen() {
   const [locais, setLocais] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const { user } = useAuth();
+  const [favoritos, setFavoritos] = useState([]);
+
+  const carregarFavoritos = async () => {
+  if (!user?.id) {
+    setFavoritos([]);
+    return;
+  }
+
+  try {
+    const data = await favoritosService.getFavoritos(user.id);
+    console.log('FAVORITOS RECEBIDOS:', data);
+    setFavoritos(
+      data.map((favorito) => favorito.id_local)
+    );
+  } catch (error) {
+    console.error('Erro ao carregar favoritos:', error.message);
+  }
+};
+
+ const alternarFavorito = async (idLocal) => {
+  if (!user?.id) {
+    Alert.alert('Atenção', 'Faça login para favoritar locais.');
+    return;
+  }
+
+  try {
+    const jaFavoritado = favoritos.includes(idLocal);
+
+    if (jaFavoritado) {
+      await favoritosService.removerFavorito(user.id, idLocal);
+    } else {
+      await favoritosService.adicionarFavorito(user.id, idLocal);
+    }
+
+    await carregarFavoritos();
+  } catch (error) {
+    console.error('Erro ao alterar favorito:', error.message);
+    Alert.alert('Erro', 'Não foi possível atualizar seus favoritos.');
+  }
+};
 
   useEffect(() => {
     carregarLocais();
   }, []);
 
+  useFocusEffect(
+  useCallback(() => {
+    carregarFavoritos();
+  }, [user?.id])
+);
+
   const carregarLocais = async () => {
     try {
       setLoading(true);
-      const data = await locaisService.getLocais();
-      setLocais(data);
+    const data = await locaisService.getLocais();
+    console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
+
+setLocais(
+  Array.isArray(data) && data.length > 0
+    ? data
+    : [
+        {
+          id_local: 'demo-1',
+          nome: 'Bistrô do Centro',
+          endereco: 'Asa Sul, Brasília - DF',
+          preco_entrada: 25,
+        },
+        {
+          id_local: 'demo-2',
+          nome: 'Parque da Cidade',
+          endereco: 'Asa Sul, Brasília - DF',
+          preco_entrada: 0,
+        },
+        {
+          id_local: 'demo-3',
+          nome: 'Café do Rolê',
+          endereco: 'Asa Norte, Brasília - DF',
+          preco_entrada: 15,
+        },
+      ]
+);
     } catch (error) {
       console.error('Erro ao carregar locais:', error.message);
     } finally {
@@ -69,16 +147,45 @@ export function HomeScreen() {
       onSearchChange={setSearch}
       onFilterPress={() => console.log('Abrir filtros')}
     >
-      <FlatList
-        data={locais}
+    <FlatList
+      style={{ flex: 1 }}
+      contentContainerStyle={{
+        paddingHorizontal: 16,
+        paddingBottom: 110,
+    }}
+    data={locais}
         keyExtractor={(item) => item.id_local.toString()}
-        ListHeaderComponent={renderHeader}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Image
-              source={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
-              style={styles.placeImage}
-            />
+        ListHeaderComponent={renderHeader()}
+       renderItem={({ item }) => (
+  <View style={styles.card}>
+    <View style={styles.imageContainer}>
+      <Image
+        source={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
+        style={styles.placeImage}
+      />
+
+  <TouchableOpacity
+  style={styles.favoriteButton}
+  onPress={() => alternarFavorito(item.id_local)}
+  accessibilityRole="button"
+  accessibilityLabel={
+    favoritos.includes(item.id_local)
+      ? 'Remover dos favoritos'
+      : 'Adicionar aos favoritos'
+  }
+>
+  <MaterialCommunityIcons
+  name={
+    favoritos.includes(item.id_local)
+      ? 'heart'
+      : 'heart-outline'
+  }
+  size={24}
+  color="#DC2626"
+/>
+</TouchableOpacity>
+
+    </View>
             <Text style={styles.nome}>{item.nome}</Text>
             <Text style={styles.endereco}>{item.endereco}</Text>
             <Text style={styles.preco}>
@@ -136,4 +243,21 @@ const styles = StyleSheet.create({
     color: '#16A34A',
     marginTop: 8,
   },
+
+  imageContainer: {
+  position: 'relative',
+},
+
+favoriteButton: {
+  position: 'absolute',
+  top: 12,
+  right: 12,
+  backgroundColor: '#FFFFFF',
+  borderRadius: 24,
+  width: 40,
+  height: 40,
+  justifyContent: 'center',
+  alignItems: 'center',
+  elevation: 3,
+},
 });

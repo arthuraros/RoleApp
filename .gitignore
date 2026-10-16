@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Variáveis de ambiente locais
+.env
+.env.*
+!.env.example

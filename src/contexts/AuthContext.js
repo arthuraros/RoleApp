@@ -317,6 +317,13 @@ export function AuthProvider({ children }) {
 
         if (error) throw error;
 
+        const isExistingUser =
+          data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0;
+
+        if (isExistingUser) {
+          throw new Error('Email já cadastrado');
+        }
+
         if (data.session) {
           setUser(data.user);
           setSession(data.session);

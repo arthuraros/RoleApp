@@ -41,6 +41,15 @@ describe('Testes de Unidade - Módulo de Autenticação (RolêApp)', () => {
     assert.equal(sanitizeEmail('  usuario@exemplo.com  '), 'usuario@exemplo.com');
   });
 
+  test('TU04b - register (Detecção de Duplicidade): identifica conta já existente via identities vazio', () => {
+    const checkIsExistingUser = (user) => {
+      return Boolean(user && Array.isArray(user.identities) && user.identities.length === 0);
+    };
+
+    assert.equal(checkIsExistingUser({ id: '1', identities: [{ id: '123' }] }), false);
+    assert.equal(checkIsExistingUser({ id: '1', identities: [] }), true);
+  });
+
   test('TU05 - resetPassword (Validação): rejeita envio de recuperação para e-mail sem @ ou vazio', () => {
     const validateResetEmail = (email) => {
       if (!email || !email.includes('@')) {

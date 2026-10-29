@@ -17,6 +17,11 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { FavoritosScreen } from '../screens/FavoritosScreen';
 import { MapaScreen } from '../screens/MapaScreen';
 import { PerfilScreen } from '../screens/PerfilScreen';
+import { SejaParceiroScreen } from '../screens/SejaParceiroScreen';
+import { PainelParceiroScreen } from '../screens/PainelParceiroScreen';
+import { EstatisticasParceiroScreen } from '../screens/EstatisticasParceiroScreen';
+import { ImpulsionarScreen } from '../screens/ImpulsionarScreen';
+import { EditarLocaisScreen } from '../screens/EditarLocaisScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -32,7 +37,7 @@ function AuthNavigator() {
   );
 }
 
-function AppNavigator() {
+function MainTabs() {
   const blurTargetRef = useRef(null);
 
   return (
@@ -51,6 +56,19 @@ function AppNavigator() {
   );
 }
 
+function AppNavigator() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="SejaParceiro" component={SejaParceiroScreen} />
+      <Stack.Screen name="PainelParceiro" component={PainelParceiroScreen} />
+      <Stack.Screen name="EstatisticasParceiro" component={EstatisticasParceiroScreen} />
+      <Stack.Screen name="Impulsionar" component={ImpulsionarScreen} />
+      <Stack.Screen name="EditarLocais" component={EditarLocaisScreen} />
+    </Stack.Navigator>
+  );
+}
+
 const styles = StyleSheet.create({
   blurTarget: {
     flex: 1,
@@ -59,11 +77,11 @@ const styles = StyleSheet.create({
 
 export function Navigation() {
   const { isAuthenticated, isPasswordRecovery, loading } = useAuth();
-const handleNavigationReady = React.useCallback(() => {
-  SplashScreen.hideAsync().catch((error) => {
-    console.warn('Erro ao ocultar SplashScreen:', error);
-  });
-}, []);
+  const handleNavigationReady = React.useCallback(() => {
+    SplashScreen.hideAsync().catch((error) => {
+      console.warn('Erro ao ocultar SplashScreen:', error);
+    });
+  }, []);
 
   if (loading) {
     return null;

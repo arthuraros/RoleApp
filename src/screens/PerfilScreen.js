@@ -20,7 +20,7 @@ import { supabase } from '../services/supabase.js'; // Importe a instância do S
 
 const MAX_FILE_SIZE_MB = 5;
 
-export function PerfilScreen() {
+export function PerfilScreen({ navigation }) {
   const { user, logout, updateUserAvatar } = useAuth();
   
   const [avatarUri, setAvatarUri] = useState(null);
@@ -207,7 +207,10 @@ export function PerfilScreen() {
               <TouchableOpacity style={styles.menuItem}>
                 <Text style={styles.menuText}>Ajuda e Suporte</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => navigation.navigate('SejaParceiro')}
+              >
                 <Text style={styles.menuText}>Seja parceiro</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem}>

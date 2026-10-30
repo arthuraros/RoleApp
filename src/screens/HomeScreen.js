@@ -9,12 +9,19 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
+const DESTAQUES = [
+  { id: '1', titulo: 'Cine R.U: A Sessão da Marmita', imagem: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba' },
+  { id: '2', titulo: 'Experiências gastronômicas', imagem: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' },
+  { id: '3', titulo: 'Eventos e diversão', imagem: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30' },
+];
+
 export function HomeScreen() {
   const [locais, setLocais] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { user } = useAuth();
   const [favoritos, setFavoritos] = useState([]);
+  const [destaqueAtivo, setDestaqueAtivo] = useState(0);
 
   const carregarFavoritos = async () => {
   if (!user?.id) {
@@ -115,14 +122,40 @@ setLocais(
     <>
       {/* Seção Destaques */}
       <Text style={styles.sectionTitle}>Destaques</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.highlightsContainer}>
-        <View style={styles.highlightCard}>
-          <Text style={styles.highlightTitle}>Cine R.U: A Sessão da Marmita</Text>
-          <TouchableOpacity style={styles.highlightButton}>
-            <Text style={styles.highlightButtonText}>Ver detalhes</Text>
-          </TouchableOpacity>
-        </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.highlightsContainer}
+        snapToInterval={322}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        disableIntervalMomentum
+        onMomentumScrollEnd={(event) => {
+          const index = Math.round(event.nativeEvent.contentOffset.x / 322);
+          setDestaqueAtivo(Math.max(0, Math.min(index, DESTAQUES.length - 1)));
+        }}
+      >
+        {DESTAQUES.map((destaque) => (
+          <View key={destaque.id} style={styles.highlightCard}>
+            <Image source={{ uri: destaque.imagem }} style={styles.highlightImage} resizeMode="cover" />
+            <View style={styles.highlightOverlay}>
+              <Text style={styles.highlightTitle}>{destaque.titulo}</Text>
+              <TouchableOpacity
+                style={styles.highlightButton}
+                accessibilityRole="button"
+                onPress={() => Alert.alert('Em breve', 'Detalhes deste destaque estarão disponíveis em breve.')}
+              >
+                <Text style={styles.highlightButtonText}>Ver detalhes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
       </ScrollView>
+      <View style={styles.destaquesIndicadores}>
+        {DESTAQUES.map((destaque, index) => (
+          <View key={destaque.id} style={[styles.destaqueBolinha, destaqueAtivo === index && styles.destaqueBolinhaAtiva]} />
+        ))}
+      </View>
 
       {/* Card do Bistrô */}
       <View style={styles.placeCard}>
@@ -157,40 +190,45 @@ setLocais(
         keyExtractor={(item) => item.id_local.toString()}
         ListHeaderComponent={renderHeader()}
        renderItem={({ item }) => (
-  <View style={styles.card}>
-    <View style={styles.imageContainer}>
-      <Image
-        source={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
-        style={styles.placeImage}
-      />
-
-  <TouchableOpacity
-  style={styles.favoriteButton}
-  onPress={() => alternarFavorito(item.id_local)}
-  accessibilityRole="button"
-  accessibilityLabel={
-    favoritos.includes(item.id_local)
-      ? 'Remover dos favoritos'
-      : 'Adicionar aos favoritos'
-  }
->
-  <MaterialCommunityIcons
-  name={
-    favoritos.includes(item.id_local)
-      ? 'heart'
-      : 'heart-outline'
-  }
-  size={24}
-  color="#DC2626"
-/>
-</TouchableOpacity>
-
-    </View>
-            <Text style={styles.nome}>{item.nome}</Text>
-            <Text style={styles.endereco}>{item.endereco}</Text>
-            <Text style={styles.preco}>
-              {!item.preco_entrada ? 'Gratuito' : `Entrada: R$ ${item.preco_entrada}`}
-            </Text>
+          <View style={styles.card}>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: item.imagem_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
+                style={styles.placeImage}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.favoriteButton}
+                onPress={() => alternarFavorito(item.id_local)}
+                accessibilityRole="button"
+                accessibilityLabel={favoritos.includes(item.id_local) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+              >
+                <MaterialCommunityIcons
+                  name={favoritos.includes(item.id_local) ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color="#DC2626"
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cardContent}>
+              <Text style={styles.nome}>{item.nome}</Text>
+              <Text style={styles.endereco}>{item.endereco}</Text>
+              <Text style={styles.preco}>
+                {item.preco_entrada === 0
+                  ? 'Entrada gratuita'
+                  : item.preco_entrada != null
+                    ? `Entrada: R$ ${item.preco_entrada}`
+                    : item.preco != null
+                      ? `Preço informado: R$ ${item.preco}`
+                      : 'Preço não informado'}
+              </Text>
+              <TouchableOpacity
+                style={styles.detailsButton}
+                onPress={() => Alert.alert('Em breve', 'A página de detalhes deste local estará disponível em breve.')}
+              >
+                <Text style={styles.detailsButtonText}>Ver detalhes</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       />
@@ -205,10 +243,15 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 12, marginTop: 4, fontWeight: '600' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#0F172A' },
   highlightsContainer: { marginBottom: 20 },
-  highlightCard: { width: 220, backgroundColor: '#1E1B4B', borderRadius: 16, padding: 16, marginRight: 12 },
-  highlightTitle: { color: '#FFFFFF', fontWeight: '700', marginBottom: 12 },
-  highlightButton: { backgroundColor: '#DC2626', borderRadius: 8, paddingVertical: 6, alignItems: 'center' },
-  highlightButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 12 },
+  highlightCard: { width: 310, height: 185, borderRadius: 16, overflow: 'hidden', marginRight: 12, backgroundColor: '#1E1B4B' },
+  highlightImage: { width: '100%', height: '100%', position: 'absolute' },
+  highlightOverlay: { flex: 1, justifyContent: 'flex-end', padding: 16, backgroundColor: 'rgba(0, 0, 0, 0.45)' },
+  highlightTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 },
+  highlightButton: { backgroundColor: '#1E1B4B', borderRadius: 8, paddingVertical: 9, paddingHorizontal: 16, alignSelf: 'flex-start' },
+  highlightButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
+  destaquesIndicadores: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: -10, marginBottom: 18 },
+  destaqueBolinha: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#CBD5E1' },
+  destaqueBolinhaAtiva: { width: 20, backgroundColor: '#1E1B4B' },
   placeCard: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, overflow: 'hidden' },
   placeImage: { width: '100%', height: 160 },
   placeInfo: { padding: 12 },
@@ -219,13 +262,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  card: {
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginVertical: 8,
-    elevation: 2,
-  },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, marginVertical: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0', elevation: 3 },
+  cardContent: { padding: 16, gap: 6 },
+  detailsButton: { backgroundColor: '#1E1B4B', borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
+  detailsButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   nome: {
     fontSize: 18,
     fontWeight: 'bold',

@@ -36,36 +36,26 @@ export function MainLayout({
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header Roxo */}
       <View style={styles.header}>
-        {/* Barra de Pesquisa */}
-        <View style={styles.searchBar}>
-          <Feather name="search" size={18} color="#64748B" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Pesquisar"
-            placeholderTextColor="#64748B"
-            value={searchValue}
-            onChangeText={onSearchChange}
-          />
-        </View>
-
-        {/* Linha com Economia, Desconto e Filtros */}
-        <View style={styles.statsRow}>
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>Economia</Text>
-            <Text style={styles.statValueGreen}>{economyValue}</Text>
+        {/* Pesquisa e filtros lado a lado */}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBar}>
+            <Feather name="search" size={18} color="#64748B" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Pesquisar"
+              placeholderTextColor="#64748B"
+              value={searchValue}
+              onChangeText={onSearchChange}
+            />
           </View>
-
-          <View style={styles.statPill}>
-            <Text style={styles.statLabel}>Desconto</Text>
-            <Text style={styles.statValueOrange}>{discountValue}</Text>
-          </View>
-
           <TouchableOpacity style={styles.filterButton} onPress={onFilterPress}>
             <MaterialIcons name="filter-list" size={18} color="#FFFFFF" />
             <Text style={styles.filterText}>Filtros</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Conteúdo com Fundo Branco */}
 
       {/* Conteúdo com Fundo Branco */}
       <View style={styles.body}>
@@ -121,14 +111,15 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 12 : 8,
     paddingBottom: 16,
   },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 42,
-    marginBottom: 10,
   },
   searchIcon: {
     marginRight: 8,
@@ -190,35 +181,15 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 24,
   },
-  categoriesScroll: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 16,
-  },
-  categoryItem: {
-    alignItems: 'center',
-  },
-  pigBadge: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  categoriesScroll: { paddingHorizontal: 8, paddingVertical: 10, gap: 10 },
+  categoryItem: { alignItems: 'center', width: 58 },
+  pigBadge: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
   pigBadgeSelected: {
     borderWidth: 2,
     borderColor: '#3B1A66',
   },
-  pigImage: {
-    width: 64,
-    height: 64,
-  },
-  categoryText: {
-    fontSize: 11,
-    color: '#334155',
-    fontWeight: '600',
-    marginTop: 4,
-  },
+  pigImage: { width: 52, height: 52 },
+  categoryText: { fontSize: 10, color: '#0F172A', fontWeight: '700', marginTop: 4, textAlign: 'center' },
   categoryTextSelected: {
     color: '#1E1B4B',
     fontWeight: '700',

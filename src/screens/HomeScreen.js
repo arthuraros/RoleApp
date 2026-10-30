@@ -15,7 +15,7 @@ const DESTAQUES = [
   { id: '3', titulo: 'Eventos e diversão', imagem: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30' },
 ];
 
-export function HomeScreen() {
+export function HomeScreen({ navigation }) {
   const [locais, setLocais] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -224,7 +224,7 @@ setLocais(
               </Text>
               <TouchableOpacity
                 style={styles.detailsButton}
-                onPress={() => Alert.alert('Em breve', 'A página de detalhes deste local estará disponível em breve.')}
+                onPress={() => navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item })}
               >
                 <Text style={styles.detailsButtonText}>Ver detalhes</Text>
               </TouchableOpacity>

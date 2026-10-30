@@ -29,6 +29,14 @@ export function PainelParceiroScreen({ navigation }) {
   const [selectedLocal, setSelectedLocal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [weekData, setWeekData] = useState(DEFAULT_WEEK_DATA);
+  const [stats, setStats] = useState({
+    mediaVisitasDia: '167',
+    visitasSemana: '1.171',
+    picoSemana: 'Pico. Sáb',
+    cliquesMes: '498',
+    picoNumero: '268',
+    picoRotulo: ' visitas · Sáb',
+  });
 
   const userId = user?.id_usuario || user?.id;
 
@@ -54,6 +62,72 @@ export function PainelParceiroScreen({ navigation }) {
     });
     return unsubscribe;
   }, [loadLocais, navigation]);
+
+  // Carrega e calcula métricas reais do local selecionado
+  const loadMetricas = useCallback(async () => {
+    if (!selectedLocal?.id_local || String(selectedLocal.id_local).startsWith('demo-')) return;
+    try {
+      const data = await parceiroService.getMetricasDoLocal(selectedLocal.id_local);
+      if (Array.isArray(data) && data.length > 0) {
+        const totalVisitas = data.reduce((acc, m) => acc + (m.visitas || 0), 0);
+        const totalCliques = data.reduce((acc, m) => acc + (m.cliques || 0), 0);
+        const media = Math.round(totalVisitas / Math.max(1, data.length));
+
+        // Últimos 7 dias
+        const ultimos7 = data.slice(-7);
+        const visitasSemana = ultimos7.reduce((acc, m) => acc + (m.visitas || 0), 0);
+
+        // Agrupamento por dia da semana
+        const diasNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+        const visitasPorDia = { Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, Sáb: 0, Dom: 0 };
+        data.forEach((m) => {
+          if (m.data) {
+            const d = new Date(m.data + 'T12:00:00');
+            const nomeDia = diasNomes[d.getDay()];
+            if (nomeDia && visitasPorDia[nomeDia] !== undefined) {
+              visitasPorDia[nomeDia] += (m.visitas || 0);
+            }
+          }
+        });
+
+        let maxDia = 'Sáb';
+        let maxVal = -1;
+        Object.entries(visitasPorDia).forEach(([d, v]) => {
+          if (v > maxVal) {
+            maxVal = v;
+            maxDia = d;
+          }
+        });
+
+        const escala = maxVal > 0 ? 148 / maxVal : 1;
+        const novaSemana = [
+          { day: 'Seg', visits: visitasPorDia.Seg, height: Math.max(20, Math.round(visitasPorDia.Seg * escala)), isPeak: maxDia === 'Seg' },
+          { day: 'Ter', visits: visitasPorDia.Ter, height: Math.max(20, Math.round(visitasPorDia.Ter * escala)), isPeak: maxDia === 'Ter' },
+          { day: 'Qua', visits: visitasPorDia.Qua, height: Math.max(20, Math.round(visitasPorDia.Qua * escala)), isPeak: maxDia === 'Qua' },
+          { day: 'Qui', visits: visitasPorDia.Qui, height: Math.max(20, Math.round(visitasPorDia.Qui * escala)), isPeak: maxDia === 'Qui' },
+          { day: 'Sex', visits: visitasPorDia.Sex, height: Math.max(20, Math.round(visitasPorDia.Sex * escala)), isPeak: maxDia === 'Sex' },
+          { day: 'Sáb', visits: visitasPorDia.Sáb, height: Math.max(20, Math.round(visitasPorDia.Sáb * escala)), isPeak: maxDia === 'Sáb' },
+          { day: 'Dom', visits: visitasPorDia.Dom, height: Math.max(20, Math.round(visitasPorDia.Dom * escala)), isPeak: maxDia === 'Dom' },
+        ];
+
+        setWeekData(novaSemana);
+        setStats({
+          mediaVisitasDia: media.toLocaleString('pt-BR'),
+          visitasSemana: visitasSemana.toLocaleString('pt-BR'),
+          picoSemana: `Pico. ${maxDia}`,
+          cliquesMes: totalCliques.toLocaleString('pt-BR'),
+          picoNumero: maxVal > 0 ? maxVal.toLocaleString('pt-BR') : '0',
+          picoRotulo: ` visitas · ${maxDia}`,
+        });
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar métricas no painel:', err);
+    }
+  }, [selectedLocal?.id_local]);
+
+  useEffect(() => {
+    loadMetricas();
+  }, [loadMetricas]);
 
   // Formata a data de início do parceiro com base no created_at
   const formatParceiroDesde = () => {
@@ -139,22 +213,22 @@ export function PainelParceiroScreen({ navigation }) {
         <View style={styles.statsGrid}>
           {/* Card 1 */}
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>167</Text>
+            <Text style={styles.statNumber}>{stats.mediaVisitasDia}</Text>
             <Text style={styles.statText}>visitas por dia (média)</Text>
           </View>
 
           {/* Card 2 */}
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>1.171</Text>
+            <Text style={styles.statNumber}>{stats.visitasSemana}</Text>
             <Text style={styles.statText}>visitas na semana</Text>
-            <Text style={styles.statSubText}>Pico. Sáb</Text>
+            <Text style={styles.statSubText}>{stats.picoSemana}</Text>
           </View>
 
           {/* Card 3 */}
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>498</Text>
+            <Text style={styles.statNumber}>{stats.cliquesMes}</Text>
             <Text style={styles.statText}>
-              {'cliques em outubro\naté hoje, dia 15'}
+              {'cliques acumulados\naté hoje'}
             </Text>
           </View>
 
@@ -181,8 +255,8 @@ export function PainelParceiroScreen({ navigation }) {
 
           <View style={styles.chartContainer}>
             <View style={styles.chartHeader}>
-              <Text style={styles.chartHighlightNumber}>268</Text>
-              <Text style={styles.chartHighlightLabel}> visitas · Sáb</Text>
+              <Text style={styles.chartHighlightNumber}>{stats.picoNumero}</Text>
+              <Text style={styles.chartHighlightLabel}>{stats.picoRotulo}</Text>
             </View>
 
             {/* Dotted Guideline */}

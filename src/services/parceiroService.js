@@ -222,9 +222,27 @@ export const parceiroService = {
   },
 
   /**
-   * Registra métricas diárias
+   * Registra métricas diárias (views, cliques, visitas)
+   * Prioriza a RPC atômica incrementar_metrica; se não existir, usa fallback upsert
    */
-  async registrarMetrica({ idLocal, data = new Date().toISOString().split('T')[0], views = 1, cliques = 0, visitas = 0 }) {
+  async registrarMetrica({ idLocal, data = new Date().toISOString().split('T')[0], views = 0, cliques = 0, visitas = 0 }) {
+    if (!idLocal || String(idLocal).startsWith('demo-')) return null;
+
+    if (typeof supabase.rpc === 'function') {
+      try {
+        const { data: rpcRes, error: rpcError } = await supabase.rpc('incrementar_metrica', {
+          p_id_local: Number(idLocal),
+          p_views: views,
+          p_cliques: cliques,
+          p_visitas: visitas,
+          p_data: data,
+        });
+        if (!rpcError) return rpcRes || { success: true };
+      } catch (err) {
+        // Segue para fallback
+      }
+    }
+
     const { data: res, error } = await supabase
       .from('metricas_locais')
       .upsert(

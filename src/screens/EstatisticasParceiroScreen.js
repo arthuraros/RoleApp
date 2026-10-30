@@ -64,6 +64,36 @@ export function EstatisticasParceiroScreen({ navigation, route }) {
           visitas: sumVisitas.toLocaleString('pt-BR'),
           conversao: conv,
         });
+
+        // Agrupa por mês para montar a evolução mensal
+        const mesesNomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const porMes = {};
+        data.forEach((m) => {
+          if (m.data) {
+            const d = new Date(m.data + 'T12:00:00');
+            const chave = mesesNomes[d.getMonth()];
+            if (!porMes[chave]) porMes[chave] = { month: chave, views: 0, cliques: 0, visitas: 0 };
+            porMes[chave].views += (m.views || 0);
+            porMes[chave].cliques += (m.cliques || 0);
+            porMes[chave].visitas += (m.visitas || 0);
+          }
+        });
+
+        const listaMeses = Object.values(porMes).map((item) => ({
+          ...item,
+          viewsFormatted: item.views.toLocaleString('pt-BR'),
+        }));
+
+        if (listaMeses.length > 0) {
+          let maxVal = -1;
+          listaMeses.forEach((m) => {
+            if (m.views > maxVal) maxVal = m.views;
+          });
+          listaMeses.forEach((m) => {
+            if (m.views === maxVal && maxVal > 0) m.isPeak = true;
+          });
+          setMonthlyData(listaMeses);
+        }
       }
     } catch (err) {
       console.warn('Erro ao carregar métricas:', err);
@@ -74,32 +104,38 @@ export function EstatisticasParceiroScreen({ navigation, route }) {
     loadMetricas();
   }, [loadMetricas]);
 
-  // Peak metric configurations
+  // Peak metric configurations dinâmico
   const getHeaderMetric = () => {
+    const pico = monthlyData.find((m) => m.isPeak) || monthlyData[monthlyData.length - 1];
+    if (!pico) return { value: '0', label: ' visualizações' };
     switch (activeTab) {
       case 'Views':
-        return { value: '3.790', label: ' visualizações · Set' };
+        return { value: (pico.views || 0).toLocaleString('pt-BR'), label: ` visualizações · ${pico.month}` };
       case 'Cliques':
-        return { value: '702', label: ' cliques · Set' };
+        return { value: (pico.cliques || 0).toLocaleString('pt-BR'), label: ` cliques · ${pico.month}` };
       case 'Visitas':
-        return { value: '407', label: ' visitas ao local · Set' };
+        return { value: (pico.visitas || 0).toLocaleString('pt-BR'), label: ` visitas ao local · ${pico.month}` };
       default:
-        return { value: '3.790', label: ' visualizações · Set' };
+        return { value: (pico.views || 0).toLocaleString('pt-BR'), label: ` visualizações · ${pico.month}` };
     }
   };
 
-  // Max value for bar scaling
+  // Max value for bar scaling dinâmico
   const getMaxValue = () => {
-    switch (activeTab) {
-      case 'Views':
-        return 3790;
-      case 'Cliques':
-        return 702;
-      case 'Visitas':
-        return 407;
-      default:
-        return 3790;
-    }
+    const vals = monthlyData.map((item) => {
+      switch (activeTab) {
+        case 'Views':
+          return item.views || 0;
+        case 'Cliques':
+          return item.cliques || 0;
+        case 'Visitas':
+          return item.visitas || 0;
+        default:
+          return item.views || 0;
+      }
+    });
+    const max = Math.max(...vals, 100);
+    return max > 0 ? max : 100;
   };
 
   const getBarValue = (item) => {

@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { locaisService } from '../services/locaisService';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { parceiroService } from '../services/parceiroService';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4';
 const MENU_CATEGORIES = ['Entradas', 'Pratos principais', 'Burguers', 'Sobremesas', 'Bebidas'];
@@ -137,6 +138,11 @@ export function DetalhesLocalScreen({ route, navigation }) {
   const openMap = async () => {
     const address = [local?.endereco, local?.bairro, local?.cidade_uf].filter(Boolean).join(', ');
     if (!address) return Alert.alert('Endereço indisponível', 'O estabelecimento não informou o endereço.');
+
+    if (local?.id_local && !String(local.id_local).startsWith('demo-')) {
+      parceiroService.registrarMetrica({ idLocal: local.id_local, visitas: 1 }).catch(() => {});
+    }
+
     try { await Linking.openURL('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address)); }
     catch { Alert.alert('Mapa indisponível', 'Não foi possível abrir o mapa.'); }
   };

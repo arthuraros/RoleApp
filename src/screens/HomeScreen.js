@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { parceiroService } from '../services/parceiroService';
@@ -8,7 +8,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { favoritosService } from '../services/favoritosService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 
 const DESTAQUES_FALLBACK = [
   {
@@ -39,6 +38,23 @@ export function HomeScreen({ navigation }) {
   const { user } = useAuth();
   const [favoritos, setFavoritos] = useState([]);
   const [destaqueAtivo, setDestaqueAtivo] = useState(0);
+  const locaisVistosRef = useRef(new Set());
+  const destaquesVistosRef = useRef(new Set());
+
+  // Registra view somente quando o card estiver 100% visível na tela
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 100,
+    minimumViewTime: 300,
+  }).current;
+
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    viewableItems.forEach(({ item }) => {
+      if (item?.id_local && !String(item.id_local).startsWith('demo-') && !locaisVistosRef.current.has(item.id_local)) {
+        locaisVistosRef.current.add(item.id_local);
+        parceiroService.registrarMetrica({ idLocal: item.id_local, views: 1 }).catch(() => {});
+      }
+    });
+  }).current;
 
   const carregarDestaques = async () => {
     try {
@@ -112,6 +128,19 @@ export function HomeScreen({ navigation }) {
     carregarLocais();
     carregarDestaques();
   }, []);
+
+  // Registra view do destaque ativo na tela
+  useEffect(() => {
+    const destaqueAtual = destaques[destaqueAtivo];
+    if (
+      destaqueAtual?.id_local &&
+      !String(destaqueAtual.id_local).startsWith('demo-') &&
+      !destaquesVistosRef.current.has(destaqueAtual.id_local)
+    ) {
+      destaquesVistosRef.current.add(destaqueAtual.id_local);
+      parceiroService.registrarMetrica({ idLocal: destaqueAtual.id_local, views: 1 }).catch(() => {});
+    }
+  }, [destaqueAtivo, destaques]);
 
   useFocusEffect(
     useCallback(() => {
@@ -307,6 +336,8 @@ export function HomeScreen({ navigation }) {
         data={locais}
         keyExtractor={(item) => item.id_local.toString()}
         ListHeaderComponent={renderHeader()}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.imageContainer}>
@@ -342,7 +373,12 @@ export function HomeScreen({ navigation }) {
               </Text>
               <TouchableOpacity
                 style={styles.detailsButton}
-                onPress={() => navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item })}
+                onPress={() => {
+                  if (item.id_local && !String(item.id_local).startsWith('demo-')) {
+                    parceiroService.registrarMetrica({ idLocal: item.id_local, cliques: 1 }).catch(() => {});
+                  }
+                  navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item });
+                }}
               >
                 <Text style={styles.detailsButtonText}>Ver detalhes</Text>
               </TouchableOpacity>

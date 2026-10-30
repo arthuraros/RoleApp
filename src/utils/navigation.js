@@ -22,6 +22,7 @@ import { PainelParceiroScreen } from '../screens/PainelParceiroScreen';
 import { EstatisticasParceiroScreen } from '../screens/EstatisticasParceiroScreen';
 import { ImpulsionarScreen } from '../screens/ImpulsionarScreen';
 import { EditarLocaisScreen } from '../screens/EditarLocaisScreen';
+import { DetalhesLocalScreen } from '../screens/DetalhesLocalScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -65,6 +66,7 @@ function AppNavigator() {
       <Stack.Screen name="EstatisticasParceiro" component={EstatisticasParceiroScreen} />
       <Stack.Screen name="Impulsionar" component={ImpulsionarScreen} />
       <Stack.Screen name="EditarLocais" component={EditarLocaisScreen} />
+      <Stack.Screen name="DetalhesLocal" component={DetalhesLocalScreen} />
     </Stack.Navigator>
   );
 }

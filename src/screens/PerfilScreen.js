@@ -14,9 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { uploadUserAvatar } from '../services/userService.js';
+import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js'; // Importado getUserReviewsCount
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabase.js'; // Importe a instância do Supabase
+import { supabase } from '../services/supabase.js';
 
 const MAX_FILE_SIZE_MB = 5;
 
@@ -26,6 +26,7 @@ export function PerfilScreen({ navigation }) {
   const [avatarUri, setAvatarUri] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [reviewsCount, setReviewsCount] = useState(0); // Estado para guardar a quantidade de avaliações
 
   const userId = user?.id_usuario || user?.id;
 
@@ -46,7 +47,6 @@ export function PerfilScreen({ navigation }) {
       }
 
       if (data?.foto_url) {
-        // Timestamp para forçar atualização do cache do React Native
         const urlWithTimestamp = `${data.foto_url}?t=${new Date().getTime()}`;
         setAvatarUri(urlWithTimestamp);
         setImageError(false);
@@ -56,9 +56,22 @@ export function PerfilScreen({ navigation }) {
     }
   }, [userId]);
 
+  // Busca da quantidade de avaliações feitas pelo usuário
+  const fetchReviewsCount = useCallback(async () => {
+    if (!userId) return;
+
+    try {
+      const count = await getContagemAvaliacoesUsuario(userId);
+      setReviewsCount(count);
+    } catch (err) {
+      console.error('Erro ao buscar quantidade de avaliações:', err);
+    }
+  }, [userId]);
+
   useEffect(() => {
     fetchUserProfile();
-  }, [fetchUserProfile]);
+    fetchReviewsCount();
+  }, [fetchUserProfile, fetchReviewsCount]);
 
   const handleSelectAvatar = async () => {
     try {
@@ -196,7 +209,7 @@ export function PerfilScreen({ navigation }) {
 
               <TouchableOpacity style={styles.actionPill}>
                 <Text style={styles.actionText}>Avaliações Feitas</Text>
-                <Text style={styles.actionBadge}>12</Text>
+                <Text style={styles.actionBadge}>{reviewsCount}</Text>
               </TouchableOpacity>
             </View>
 

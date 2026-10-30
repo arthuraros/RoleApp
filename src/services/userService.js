@@ -55,3 +55,28 @@ export async function uploadUserAvatar(userId, imageUri) {
 
   return publicUrl;
 }
+
+/**
+ * Retorna a quantidade de avaliações que uma pessoa já fez.
+ * 
+ * @param {string|number} userId - ID do usuário
+ * @returns {Promise<number>} Quantidade de avaliações
+ */
+export async function getContagemAvaliacoesUsuario(userId) {
+  if (!userId) {
+    throw new Error('ID do usuário não fornecido.');
+  }
+
+  // Usamos { count: 'exact', head: true } para buscar apenas a contagem de forma otimizada,
+  // sem precisar trafegar os dados das avaliações pela rede.
+  const { count, error } = await supabase
+    .from('avaliacoes_locais') // Substitua 'avaliacoes' pelo nome exato da sua tabela no banco se for diferente
+    .select('*', { count: 'exact', head: true })
+    .eq('id_usuario', userId); // Substitua 'id_usuario' pela coluna estrangeira da sua tabela de avaliações
+
+  if (error) {
+    throw new Error(`Erro ao buscar a quantidade de avaliações: ${error.message}`);
+  }
+
+  return count || 0;
+}

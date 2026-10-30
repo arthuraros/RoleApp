@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { locaisService } from '../services/locaisService';
+import { parceiroService } from '../services/parceiroService';
 import { MainLayout } from '../components/MainLayout';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,99 +10,146 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 
-const DESTAQUES = [
-  { id: '1', titulo: 'Cine R.U: A Sessão da Marmita', imagem: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba' },
-  { id: '2', titulo: 'Experiências gastronômicas', imagem: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' },
-  { id: '3', titulo: 'Eventos e diversão', imagem: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30' },
+const DESTAQUES_FALLBACK = [
+  {
+    id: '1',
+    titulo: 'Cine R.U: A Sessão da Marmita',
+    mensagem: 'Exibição de filmes cult no Restaurante Universitário após o horário do jantar',
+    imagem: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba',
+  },
+  {
+    id: '2',
+    titulo: 'Brazl Burger: Rodada Dupla',
+    mensagem: 'Combo burger artesanal + batata pequena por R$ 29,90',
+    imagem: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd',
+  },
+  {
+    id: '3',
+    titulo: 'Noite Cultural & Acústico',
+    mensagem: 'Apresentações ao vivo e promoções especiais no bistrô',
+    imagem: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819',
+  },
 ];
 
 export function HomeScreen({ navigation }) {
   const [locais, setLocais] = useState([]);
+  const [destaques, setDestaques] = useState(DESTAQUES_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { user } = useAuth();
   const [favoritos, setFavoritos] = useState([]);
   const [destaqueAtivo, setDestaqueAtivo] = useState(0);
 
+  const carregarDestaques = async () => {
+    try {
+      const data = await parceiroService.getDestaquesAtivos();
+      if (Array.isArray(data) && data.length > 0) {
+        const imagensFallback = [
+          'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4',
+          'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba',
+          'https://images.unsplash.com/photo-1492684223066-81342ee5ff30',
+        ];
+
+        const mapeados = data.map((campanha, index) => ({
+          id: campanha.id_campanha.toString(),
+          id_local: campanha.id_local,
+          titulo: campanha.titulo || campanha.locais?.nome || 'Destaque especial',
+          mensagem: campanha.mensagem || '',
+          imagem: campanha.locais?.imagem_url || imagensFallback[index % imagensFallback.length],
+          local: campanha.locais || null,
+        }));
+
+        setDestaques(mapeados);
+      } else {
+        setDestaques(DESTAQUES_FALLBACK);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar destaques de campanhas:', err.message);
+      setDestaques(DESTAQUES_FALLBACK);
+    }
+  };
+
   const carregarFavoritos = async () => {
-  if (!user?.id) {
-    setFavoritos([]);
-    return;
-  }
-
-  try {
-    const data = await favoritosService.getFavoritos(user.id);
-    console.log('FAVORITOS RECEBIDOS:', data);
-    setFavoritos(
-      data.map((favorito) => favorito.id_local)
-    );
-  } catch (error) {
-    console.error('Erro ao carregar favoritos:', error.message);
-  }
-};
-
- const alternarFavorito = async (idLocal) => {
-  if (!user?.id) {
-    Alert.alert('Atenção', 'Faça login para favoritar locais.');
-    return;
-  }
-
-  try {
-    const jaFavoritado = favoritos.includes(idLocal);
-
-    if (jaFavoritado) {
-      await favoritosService.removerFavorito(user.id, idLocal);
-    } else {
-      await favoritosService.adicionarFavorito(user.id, idLocal);
+    if (!user?.id) {
+      setFavoritos([]);
+      return;
     }
 
-    await carregarFavoritos();
-  } catch (error) {
-    console.error('Erro ao alterar favorito:', error.message);
-    Alert.alert('Erro', 'Não foi possível atualizar seus favoritos.');
-  }
-};
+    try {
+      const data = await favoritosService.getFavoritos(user.id);
+      console.log('FAVORITOS RECEBIDOS:', data);
+      setFavoritos(
+        data.map((favorito) => favorito.id_local)
+      );
+    } catch (error) {
+      console.error('Erro ao carregar favoritos:', error.message);
+    }
+  };
+
+  const alternarFavorito = async (idLocal) => {
+    if (!user?.id) {
+      Alert.alert('Atenção', 'Faça login para favoritar locais.');
+      return;
+    }
+
+    try {
+      const jaFavoritado = favoritos.includes(idLocal);
+
+      if (jaFavoritado) {
+        await favoritosService.removerFavorito(user.id, idLocal);
+      } else {
+        await favoritosService.adicionarFavorito(user.id, idLocal);
+      }
+
+      await carregarFavoritos();
+    } catch (error) {
+      console.error('Erro ao alterar favorito:', error.message);
+      Alert.alert('Erro', 'Não foi possível atualizar seus favoritos.');
+    }
+  };
 
   useEffect(() => {
     carregarLocais();
+    carregarDestaques();
   }, []);
 
   useFocusEffect(
-  useCallback(() => {
-    carregarFavoritos();
-  }, [user?.id])
-);
+    useCallback(() => {
+      carregarFavoritos();
+      carregarDestaques();
+    }, [user?.id])
+  );
 
   const carregarLocais = async () => {
     try {
       setLoading(true);
-    const data = await locaisService.getLocais();
-    console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
+      const data = await locaisService.getLocais();
+      console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
 
-setLocais(
-  Array.isArray(data) && data.length > 0
-    ? data
-    : [
-        {
-          id_local: 'demo-1',
-          nome: 'Bistrô do Centro',
-          endereco: 'Asa Sul, Brasília - DF',
-          preco_entrada: 25,
-        },
-        {
-          id_local: 'demo-2',
-          nome: 'Parque da Cidade',
-          endereco: 'Asa Sul, Brasília - DF',
-          preco_entrada: 0,
-        },
-        {
-          id_local: 'demo-3',
-          nome: 'Café do Rolê',
-          endereco: 'Asa Norte, Brasília - DF',
-          preco_entrada: 15,
-        },
-      ]
-);
+      setLocais(
+        Array.isArray(data) && data.length > 0
+          ? data
+          : [
+            {
+              id_local: 'demo-1',
+              nome: 'Bistrô do Centro',
+              endereco: 'Asa Sul, Brasília - DF',
+              preco_entrada: 25,
+            },
+            {
+              id_local: 'demo-2',
+              nome: 'Parque da Cidade',
+              endereco: 'Asa Sul, Brasília - DF',
+              preco_entrada: 0,
+            },
+            {
+              id_local: 'demo-3',
+              nome: 'Café do Rolê',
+              endereco: 'Asa Norte, Brasília - DF',
+              preco_entrada: 15,
+            },
+          ]
+      );
     } catch (error) {
       console.error('Erro ao carregar locais:', error.message);
     } finally {
@@ -117,6 +165,89 @@ setLocais(
     );
   }
 
+  const handlePressDestaque = (destaque) => {
+    if (destaque.id_local) {
+      parceiroService.registrarMetrica({ idLocal: destaque.id_local, cliques: 1 }).catch(() => { });
+      if (destaque.local) {
+        navigation.navigate('DetalhesLocal', { idLocal: destaque.id_local, local: destaque.local });
+      } else {
+        navigation.navigate('DetalhesLocal', { idLocal: destaque.id_local });
+      }
+    } else {
+      Alert.alert(destaque.titulo, destaque.mensagem || 'Destaque especial');
+    }
+  };
+
+  const renderHighlightCard = (destaque, index) => {
+    const isEven = index % 2 === 0;
+
+    if (isEven) {
+      return (
+        <View key={destaque.id} style={styles.highlightCardEven}>
+          <View style={styles.cardTopAreaEven}>
+            <Image source={{ uri: destaque.imagem }} style={styles.cardImageRight} resizeMode="cover" />
+
+            {/* Recortes pontiagudos estilo comic/destaque sobre a imagem */}
+            <View style={styles.spikesContainer} pointerEvents="none">
+              <View style={[styles.spike, styles.spikeTop]} />
+              <View style={[styles.spike, styles.spikeMid]} />
+              <View style={[styles.spike, styles.spikeBot]} />
+            </View>
+
+            <View style={styles.cardTextAreaLeft}>
+              <Text style={styles.highlightTitle} numberOfLines={2}>
+                {destaque.titulo}
+              </Text>
+              {Boolean(destaque.mensagem) && (
+                <Text style={styles.highlightSubtitle} numberOfLines={3}>
+                  {destaque.mensagem}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.highlightButtonBottom}
+            accessibilityRole="button"
+            activeOpacity={0.85}
+            onPress={() => handlePressDestaque(destaque)}
+          >
+            <Text style={styles.highlightButtonText}>Ver detalhes</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View key={destaque.id} style={styles.highlightCardOdd}>
+        <Image source={{ uri: destaque.imagem }} style={styles.cardImageLeft} resizeMode="cover" />
+
+        {/* Divisoria diagonal estilizada */}
+        <View style={styles.slantDivider} pointerEvents="none" />
+
+        <View style={styles.cardTextAreaRight}>
+          <Text style={styles.highlightTitle} numberOfLines={2}>
+            {destaque.titulo}
+          </Text>
+          {Boolean(destaque.mensagem) && (
+            <Text style={styles.highlightSubtitle} numberOfLines={3}>
+              {destaque.mensagem}
+            </Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={styles.highlightButtonRight}
+          accessibilityRole="button"
+          activeOpacity={0.85}
+          onPress={() => handlePressDestaque(destaque)}
+        >
+          <Text style={styles.highlightButtonText}>Ver detalhes</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // Componente contendo os elementos fixos do topo
   const renderHeader = () => (
     <>
@@ -126,33 +257,20 @@ setLocais(
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.highlightsContainer}
-        snapToInterval={322}
+        contentContainerStyle={{ paddingRight: 4 }}
+        snapToInterval={329}
         snapToAlignment="start"
         decelerationRate="fast"
         disableIntervalMomentum
         onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.x / 322);
-          setDestaqueAtivo(Math.max(0, Math.min(index, DESTAQUES.length - 1)));
+          const index = Math.round(event.nativeEvent.contentOffset.x / 329);
+          setDestaqueAtivo(Math.max(0, Math.min(index, destaques.length - 1)));
         }}
       >
-        {DESTAQUES.map((destaque) => (
-          <View key={destaque.id} style={styles.highlightCard}>
-            <Image source={{ uri: destaque.imagem }} style={styles.highlightImage} resizeMode="cover" />
-            <View style={styles.highlightOverlay}>
-              <Text style={styles.highlightTitle}>{destaque.titulo}</Text>
-              <TouchableOpacity
-                style={styles.highlightButton}
-                accessibilityRole="button"
-                onPress={() => Alert.alert('Em breve', 'Detalhes deste destaque estarão disponíveis em breve.')}
-              >
-                <Text style={styles.highlightButtonText}>Ver detalhes</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
+        {destaques.map((destaque, index) => renderHighlightCard(destaque, index))}
       </ScrollView>
       <View style={styles.destaquesIndicadores}>
-        {DESTAQUES.map((destaque, index) => (
+        {destaques.map((destaque, index) => (
           <View key={destaque.id} style={[styles.destaqueBolinha, destaqueAtivo === index && styles.destaqueBolinhaAtiva]} />
         ))}
       </View>
@@ -180,16 +298,16 @@ setLocais(
       onSearchChange={setSearch}
       onFilterPress={() => console.log('Abrir filtros')}
     >
-    <FlatList
-      style={{ flex: 1 }}
-      contentContainerStyle={{
-        paddingHorizontal: 16,
-        paddingBottom: 110,
-    }}
-    data={locais}
+      <FlatList
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: 110,
+        }}
+        data={locais}
         keyExtractor={(item) => item.id_local.toString()}
         ListHeaderComponent={renderHeader()}
-       renderItem={({ item }) => (
+        renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.imageContainer}>
               <Image
@@ -243,13 +361,156 @@ const styles = StyleSheet.create({
   categoryText: { fontSize: 12, marginTop: 4, fontWeight: '600' },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#0F172A' },
   highlightsContainer: { marginBottom: 20 },
-  highlightCard: { width: 310, height: 185, borderRadius: 16, overflow: 'hidden', marginRight: 12, backgroundColor: '#1E1B4B' },
-  highlightImage: { width: '100%', height: '100%', position: 'absolute' },
-  highlightOverlay: { flex: 1, justifyContent: 'flex-end', padding: 16, backgroundColor: 'rgba(0, 0, 0, 0.45)' },
-  highlightTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', marginBottom: 12 },
-  highlightButton: { backgroundColor: '#1E1B4B', borderRadius: 8, paddingVertical: 9, paddingHorizontal: 16, alignSelf: 'flex-start' },
-  highlightButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
-  destaquesIndicadores: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: -10, marginBottom: 18 },
+  highlightCardEven: {
+    width: 315,
+    height: 195,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginRight: 14,
+    backgroundColor: '#1C1645',
+    position: 'relative',
+  },
+  highlightCardOdd: {
+    width: 315,
+    height: 195,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginRight: 14,
+    backgroundColor: '#382FA0',
+    position: 'relative',
+  },
+  cardTopAreaEven: {
+    height: 138,
+    position: 'relative',
+  },
+  cardImageRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '52%',
+    height: 138,
+  },
+  spikesContainer: {
+    position: 'absolute',
+    left: 146,
+    top: 0,
+    bottom: 0,
+    width: 35,
+    zIndex: 3,
+  },
+  spike: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: '#1C1645',
+  },
+  spikeTop: {
+    top: 12,
+    borderTopWidth: 10,
+    borderBottomWidth: 10,
+    borderLeftWidth: 20,
+  },
+  spikeMid: {
+    top: 48,
+    borderTopWidth: 15,
+    borderBottomWidth: 15,
+    borderLeftWidth: 32,
+  },
+  spikeBot: {
+    top: 92,
+    borderTopWidth: 12,
+    borderBottomWidth: 12,
+    borderLeftWidth: 22,
+  },
+  cardTextAreaLeft: {
+    width: '50%',
+    height: 138,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 4,
+  },
+  cardImageLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '46%',
+  },
+  slantDivider: {
+    position: 'absolute',
+    left: '42%',
+    top: -15,
+    bottom: -15,
+    width: 28,
+    backgroundColor: '#382FA0',
+    transform: [{ skewX: '-15deg' }],
+    zIndex: 2,
+  },
+  cardTextAreaRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: '56%',
+    height: 138,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 4,
+  },
+  highlightTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 6,
+  },
+  highlightSubtitle: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 14.5,
+  },
+  highlightButtonBottom: {
+    position: 'absolute',
+    bottom: 12,
+    left: 14,
+    right: 14,
+    height: 34,
+    backgroundColor: '#C81D25',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  highlightButtonRight: {
+    position: 'absolute',
+    bottom: 12,
+    right: 14,
+    width: '52%',
+    height: 34,
+    backgroundColor: '#C81D25',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  highlightButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13.5,
+  },
+  destaquesIndicadores: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: 18 },
   destaqueBolinha: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#CBD5E1' },
   destaqueBolinhaAtiva: { width: 20, backgroundColor: '#1E1B4B' },
   placeCard: { borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, overflow: 'hidden' },
@@ -285,19 +546,19 @@ const styles = StyleSheet.create({
   },
 
   imageContainer: {
-  position: 'relative',
-},
+    position: 'relative',
+  },
 
-favoriteButton: {
-  position: 'absolute',
-  top: 12,
-  right: 12,
-  backgroundColor: '#FFFFFF',
-  borderRadius: 24,
-  width: 40,
-  height: 40,
-  justifyContent: 'center',
-  alignItems: 'center',
-  elevation: 3,
-},
+  favoriteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+  },
 });

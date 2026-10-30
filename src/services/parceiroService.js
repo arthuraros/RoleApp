@@ -309,5 +309,38 @@ export const parceiroService = {
     if (error) throw new Error(error.message);
     return data;
   },
+
+  /**
+   * Busca as campanhas de destaque ativas para exibição na HomeScreen
+   */
+  async getDestaquesAtivos() {
+    const { data, error } = await supabase
+      .from('campanhas_impulsionamento')
+      .select(`
+        id_campanha,
+        id_local,
+        tipo,
+        titulo,
+        mensagem,
+        status,
+        data_fim,
+        created_at,
+        locais (
+          id_local,
+          nome,
+          descricao,
+          endereco,
+          preco,
+          preco_entrada,
+          faixa_preco
+        )
+      `)
+      .eq('tipo', 'destaque')
+      .eq('status', 'ativa')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
 };
 

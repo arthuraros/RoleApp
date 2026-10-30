@@ -28,6 +28,10 @@ export function DetalhesLocalScreen({ route, navigation }) {
   const [loading, setLoading] = useState(!initialLocal);
   const [error, setError] = useState('');
   const [activeMenu, setActiveMenu] = useState(0);
+  const [categoriasCardapio, setCategoriasCardapio] = useState([]);
+  const [itensCardapio, setItensCardapio] = useState([]);
+  const [cardapioLoading, setCardapioLoading] = useState(false);
+  const [cardapioErro, setCardapioErro] = useState('');
   const [avaliacoes, setAvaliacoes] = useState([]);
   const [avaliacoesErro, setAvaliacoesErro] = useState('');
   const [nota, setNota] = useState(null);
@@ -66,6 +70,45 @@ export function DetalhesLocalScreen({ route, navigation }) {
     carregar();
     return () => { ativo = false; };
   }, [idLocal]);
+
+  // CARREGAMENTO_CARDAPIO_ROLEAPP_V2
+  useEffect(() => {
+    let ativo = true;
+    setActiveMenu(0);
+    setCategoriasCardapio([]);
+    setItensCardapio([]);
+    setCardapioErro('');
+    if (idLocal == null || String(idLocal).startsWith('demo-')) return () => { ativo = false; };
+    const carregarCardapio = async () => {
+      setCardapioLoading(true);
+      try {
+        const [categoriasResposta, itensResposta] = await Promise.all([
+          supabase.from('categorias_cardapio')
+            .select('id_categoria, nome, ordem, ativo')
+            .eq('id_local', idLocal).eq('ativo', true).order('ordem', { ascending: true }),
+          supabase.from('itens_cardapio')
+            .select('id_item, id_categoria, nome, descricao, preco, disponivel, ordem')
+            .eq('id_local', idLocal).eq('disponivel', true).order('ordem', { ascending: true }),
+        ]);
+        if (categoriasResposta.error) throw categoriasResposta.error;
+        if (itensResposta.error) throw itensResposta.error;
+        if (ativo) {
+          setCategoriasCardapio(categoriasResposta.data || []);
+          setItensCardapio(itensResposta.data || []);
+        }
+      } catch (e) {
+        if (ativo) setCardapioErro(e.message || 'Não foi possível carregar o cardápio.');
+      } finally {
+        if (ativo) setCardapioLoading(false);
+      }
+    };
+    carregarCardapio();
+    return () => { ativo = false; };
+  }, [idLocal]);
+
+  const categoriasExibidas = categoriasCardapio.length
+    ? categoriasCardapio
+    : MENU_CATEGORIES.map((nome) => ({ id_categoria: null, nome }));
 
   const enviarAvaliacao = async () => {
     if (!userId) return Alert.alert('Login necessário', 'Entre na sua conta para avaliar este local.');
@@ -155,19 +198,36 @@ export function DetalhesLocalScreen({ route, navigation }) {
               </LinearGradient>
               <View style={styles.menuBody}>
                 <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-                  onMomentumScrollEnd={(e) => setActiveMenu(Math.max(0, Math.min(MENU_CATEGORIES.length-1, Math.round(e.nativeEvent.contentOffset.x / (menuWidth - 8)))))}
+                  key={String(idLocal || 'sem-local')}
+                  onMomentumScrollEnd={(e) => setActiveMenu(Math.max(0, Math.min(categoriasExibidas.length - 1, Math.round(e.nativeEvent.contentOffset.x / (menuWidth - 8)))))}
                   style={{ flexGrow: 0 }}>
-                  {MENU_CATEGORIES.map((cat) => (
-                    <View key={cat} style={{ width: menuWidth - 8, minHeight: 430, paddingHorizontal: 10, paddingTop: 10 }}>
-                      <Text style={styles.categoryTitle}>{cat.toUpperCase()}</Text>
-                      <Text style={styles.menuEmpty}>O cardápio desta categoria ainda não foi cadastrado.</Text>
-                    </View>
-                  ))}
+                  {categoriasExibidas.map((cat, index) => {
+                    const produtos = itensCardapio.filter(item => cat.id_categoria != null && String(item.id_categoria) === String(cat.id_categoria));
+                    return (
+                      <View key={cat.id_categoria == null ? cat.nome : String(cat.id_categoria)} style={{ width: menuWidth - 8, minHeight: 430, paddingHorizontal: 10, paddingTop: 10 }}>
+                        <Text style={styles.categoryTitle}>{cat.nome.toUpperCase()}</Text>
+                        {cardapioLoading ? <ActivityIndicator style={{ marginTop: 35 }} color="#483AAE" /> : null}
+                        {cardapioErro ? <Text style={styles.menuEmpty}>{cardapioErro}</Text> : null}
+                        {!cardapioLoading && !cardapioErro && produtos.length === 0 ? (
+                          <Text style={styles.menuEmpty}>Nenhum produto cadastrado nesta categoria.</Text>
+                        ) : null}
+                        {!cardapioLoading && !cardapioErro && produtos.map((produto) => (
+                          <View key={String(produto.id_item)} style={{ borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 5, padding: 10, marginTop: 9, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#1E2939', fontWeight: '600', fontSize: 13 }}>{produto.nome}</Text>
+                              {produto.descricao ? <Text style={{ color: '#6A7282', fontSize: 12, marginTop: 3 }}>{produto.descricao}</Text> : null}
+                            </View>
+                            <Text style={{ color: '#1E1848', fontSize: 16, fontWeight: '700' }}>{money(produto.preco)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  })}
                 </ScrollView>
               </View>
             </View>
             <View style={styles.pagination}>
-              {MENU_CATEGORIES.map((c, i) => <View key={c} style={[styles.dot, activeMenu === i && styles.dotActive]} />)}
+              {categoriasExibidas.map((c, i) => <View key={c.id_categoria == null ? c.nome : String(c.id_categoria)} style={[styles.dot, activeMenu === i && styles.dotActive]} />)}
             </View>
             <Text style={styles.swipeHint}>Deslize o cardápio para ver outras categorias</Text>
             <View style={styles.avaliacoesSecao}>

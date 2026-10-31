@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Dimensions } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { parceiroService } from '../services/parceiroService';
+import { categoriasService } from '../services/categoriasService';
 import { MainLayout } from '../components/MainLayout';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { favoritosService } from '../services/favoritosService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const DESTAQUES_FALLBACK = [
   {
@@ -32,16 +35,61 @@ const DESTAQUES_FALLBACK = [
 
 export function HomeScreen({ navigation }) {
   const [locais, setLocais] = useState([]);
+  const [locaisFiltrados, setLocaisFiltrados] = useState([]);
   const [destaques, setDestaques] = useState(DESTAQUES_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { user } = useAuth();
   const [favoritos, setFavoritos] = useState([]);
   const [destaqueAtivo, setDestaqueAtivo] = useState(0);
+  
+  // Estados do Modal de Filtros
+  const [isFilterVisible, setIsFilterVisible] = useState(false);
+  const [price, setPrice] = useState('');
+  const [distance, setDistance] = useState('');
+  const [showTipoRolde, setShowTipoRolde] = useState(false);
+  
+  const [tiposRolde, setTiposRolde] = useState([]);
+
+  const slideAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  const handleOpenFilter = () => {
+    setIsFilterVisible(true);
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 1500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      })
+    ]).start();
+  };
+
+  const handleCloseFilter = () => {
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -SCREEN_HEIGHT,
+        duration: 1000,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      setIsFilterVisible(false);
+    });
+  };
+
   const locaisVistosRef = useRef(new Set());
   const destaquesVistosRef = useRef(new Set());
 
-  // Registra view somente quando o card estiver 100% visível na tela
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 100,
     minimumViewTime: 300,
@@ -85,6 +133,21 @@ export function HomeScreen({ navigation }) {
     }
   };
 
+  const carregarCategorias = async () => {
+    try {
+      const data = await categoriasService.getCategorias();
+      if (Array.isArray(data)) {
+        const formatadas = data.map(cat => ({
+          ...cat,
+          selecionado: false
+        }));
+        setTiposRolde(formatadas);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar categorias:', error.message);
+    }
+  };
+
   const carregarFavoritos = async () => {
     if (!user?.id) {
       setFavoritos([]);
@@ -93,7 +156,6 @@ export function HomeScreen({ navigation }) {
 
     try {
       const data = await favoritosService.getFavoritos(user.id);
-      console.log('FAVORITOS RECEBIDOS:', data);
       setFavoritos(
         data.map((favorito) => favorito.id_local)
       );
@@ -127,9 +189,66 @@ export function HomeScreen({ navigation }) {
   useEffect(() => {
     carregarLocais();
     carregarDestaques();
+    carregarCategorias();
   }, []);
 
-  // Registra view do destaque ativo na tela
+  useEffect(() => {
+    let resultado = [...locais];
+
+    if (search.trim()) {
+      const termo = search.toLowerCase();
+      resultado = resultado.filter((l) => 
+        l.nome?.toLowerCase().includes(termo) || 
+        l.endereco?.toLowerCase().includes(termo)
+      );
+    }
+
+    setLocaisFiltrados(resultado);
+  }, [search, locais]);
+
+  const aplicarFiltrosAvancados = async () => {
+    try {
+      setLoading(true);
+      let locaisBase = [...locais];
+
+      if (price.trim() !== '') {
+        const precoMaximo = parseFloat(price.replace(',', '.'));
+        
+        if (!isNaN(precoMaximo)) {
+          locaisBase = locaisBase.filter((l) => {
+            const valorLocal = l.preco ?? l.preco_entrada;
+            return valorLocal != null && Number(valorLocal) <= precoMaximo;
+          });
+        }
+      }
+
+      const categoriasSelecionadas = tiposRolde
+        .filter(c => c.selecionado)
+        .map(c => c.id_categoria);
+
+      if (categoriasSelecionadas.length > 0) {
+        const locaisIdsPermitidos = await categoriasService.getLocaisIdsPorCategorias(categoriasSelecionadas);
+        locaisBase = locaisBase.filter(l => locaisIdsPermitidos.includes(l.id_local));
+      }
+
+      setLocaisFiltrados(locaisBase);
+      handleCloseFilter();
+    } catch (error) {
+      console.error('Erro ao aplicar filtros:', error);
+      Alert.alert('Erro', 'Não foi possível aplicar os filtros.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const limparFiltros = () => {
+    setTiposRolde(prev => prev.map(c => ({ ...c, selecionado: false })));
+    setPrice('');
+    setDistance('');
+    setLocaisFiltrados(locais);
+    handleCloseFilter();
+  };
+
   useEffect(() => {
     const destaqueAtual = destaques[destaqueAtivo];
     if (
@@ -153,32 +272,32 @@ export function HomeScreen({ navigation }) {
     try {
       setLoading(true);
       const data = await locaisService.getLocais();
-      console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
 
-      setLocais(
-        Array.isArray(data) && data.length > 0
-          ? data
-          : [
+      const listaLocais = Array.isArray(data) && data.length > 0
+        ? data
+        : [
             {
               id_local: 'demo-1',
               nome: 'Bistrô do Centro',
               endereco: 'Asa Sul, Brasília - DF',
-              preco_entrada: 25,
+              preco: 25,
             },
             {
               id_local: 'demo-2',
               nome: 'Parque da Cidade',
               endereco: 'Asa Sul, Brasília - DF',
-              preco_entrada: 0,
+              preco: 0,
             },
             {
               id_local: 'demo-3',
               nome: 'Café do Rolê',
               endereco: 'Asa Norte, Brasília - DF',
-              preco_entrada: 15,
+              preco: 15,
             },
-          ]
-      );
+          ];
+
+      setLocais(listaLocais);
+      setLocaisFiltrados(listaLocais);
     } catch (error) {
       console.error('Erro ao carregar locais:', error.message);
     } finally {
@@ -186,7 +305,7 @@ export function HomeScreen({ navigation }) {
     }
   };
 
-  if (loading) {
+  if (loading && locais.length === 0) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#1E1B4B" />
@@ -216,7 +335,6 @@ export function HomeScreen({ navigation }) {
           <View style={styles.cardTopAreaEven}>
             <Image source={{ uri: destaque.imagem }} style={styles.cardImageRight} resizeMode="cover" />
 
-            {/* Recortes pontiagudos estilo comic/destaque sobre a imagem */}
             <View style={styles.spikesContainer} pointerEvents="none">
               <View style={[styles.spike, styles.spikeTop]} />
               <View style={[styles.spike, styles.spikeMid]} />
@@ -251,7 +369,6 @@ export function HomeScreen({ navigation }) {
       <View key={destaque.id} style={styles.highlightCardOdd}>
         <Image source={{ uri: destaque.imagem }} style={styles.cardImageLeft} resizeMode="cover" />
 
-        {/* Divisoria diagonal estilizada */}
         <View style={styles.slantDivider} pointerEvents="none" />
 
         <View style={styles.cardTextAreaRight}>
@@ -277,10 +394,8 @@ export function HomeScreen({ navigation }) {
     );
   };
 
-  // Componente contendo os elementos fixos do topo
   const renderHeader = () => (
     <>
-      {/* Seção Destaques */}
       <Text style={styles.sectionTitle}>Destaques</Text>
       <ScrollView
         horizontal
@@ -304,7 +419,6 @@ export function HomeScreen({ navigation }) {
         ))}
       </View>
 
-      {/* Card do Bistrô */}
       <View style={styles.placeCard}>
         <Image
           source={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
@@ -325,7 +439,7 @@ export function HomeScreen({ navigation }) {
       activeTab="Inicio"
       searchValue={search}
       onSearchChange={setSearch}
-      onFilterPress={() => console.log('Abrir filtros')}
+      onFilterPress={handleOpenFilter}
     >
       <FlatList
         style={{ flex: 1 }}
@@ -333,7 +447,7 @@ export function HomeScreen({ navigation }) {
           paddingHorizontal: 16,
           paddingBottom: 110,
         }}
-        data={locais}
+        data={locaisFiltrados}
         keyExtractor={(item) => item.id_local.toString()}
         ListHeaderComponent={renderHeader()}
         viewabilityConfig={viewabilityConfig}
@@ -363,12 +477,12 @@ export function HomeScreen({ navigation }) {
               <Text style={styles.nome}>{item.nome}</Text>
               <Text style={styles.endereco}>{item.endereco}</Text>
               <Text style={styles.preco}>
-                {item.preco_entrada === 0
+                {item.preco === 0 || item.preco_entrada === 0
                   ? 'Entrada gratuita'
-                  : item.preco_entrada != null
-                    ? `Entrada: R$ ${item.preco_entrada}`
-                    : item.preco != null
-                      ? `Preço informado: R$ ${item.preco}`
+                  : item.preco != null
+                    ? `Preço: R$ ${item.preco}`
+                    : item.preco_entrada != null
+                      ? `Entrada: R$ ${item.preco_entrada}`
                       : 'Preço não informado'}
               </Text>
               <TouchableOpacity
@@ -386,6 +500,116 @@ export function HomeScreen({ navigation }) {
           </View>
         )}
       />
+
+      {/* Modal de Filtros Avançados Corrigido */}
+      <Modal visible={isFilterVisible} transparent={true} animationType="none">
+        <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
+          <TouchableOpacity 
+            style={styles.overlayTouchable} 
+            activeOpacity={1} 
+            onPress={handleCloseFilter}
+          >
+            <TouchableOpacity activeOpacity={1} style={styles.cardWrapperTouchable}>
+              <Animated.View style={[styles.filterCard, { transform: [{ translateY: slideAnim }] }]}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  
+                  {/* Bloco de Preço */}
+                  <View style={styles.sectionHeaderModal}>
+                    <Text style={styles.sectionTitleModal}>Preço</Text>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.currency}>R$</Text>
+                      <TextInput 
+                        style={styles.inputBox}
+                        value={price}
+                        onChangeText={setPrice}
+                        placeholder="00,00"
+                        placeholderTextColor="#A0A0A0"
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.sliderBar}>
+                    <View style={styles.sliderThumb} />
+                  </View>
+                  <View style={styles.sliderLabels}>
+                    <Text style={styles.limitLabel}>MIN</Text>
+                    <Text style={styles.limitLabel}>MAX</Text>
+                  </View>
+
+                  {/* Bloco de Distância */}
+                  <View style={[styles.sectionHeaderModal, { marginTop: 20 }]}>
+                    <Text style={styles.sectionTitleModal}>Distância</Text>
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.currency}>KM</Text>
+                      <TextInput 
+                        style={styles.inputBox}
+                        value={distance}
+                        onChangeText={setDistance}
+                        placeholder="000"
+                        placeholderTextColor="#A0A0A0"
+                        keyboardType="numeric"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.sliderBar}>
+                    <View style={styles.sliderThumb} />
+                  </View>
+                  <View style={styles.sliderLabels}>
+                    <Text style={styles.limitLabel}>MIN</Text>
+                    <Text style={styles.limitLabel}>MAX</Text>
+                  </View>
+
+                  {/* Dropdown: Tipo de Rolê */}
+                  <TouchableOpacity 
+                    style={styles.dropdownHeader} 
+                    onPress={() => setShowTipoRolde(!showTipoRolde)}
+                  >
+                    <Text style={styles.dropdownTitle}>Tipo de Rolê</Text>
+                    <Feather name={showTipoRolde ? "chevron-up" : "chevron-down"} size={22} color="#1E1848" />
+                  </TouchableOpacity>
+
+                  {showTipoRolde && (
+                    <View style={styles.checkboxGrid}>
+                      {tiposRolde.map((cat) => (
+                        <TouchableOpacity 
+                          key={cat.id_categoria} 
+                          style={styles.checkboxItem}
+                          onPress={() => {
+                            setTiposRolde(prev => prev.map(item => 
+                              item.id_categoria === cat.id_categoria 
+                                ? { ...item, selecionado: !item.selecionado } 
+                                : item
+                            ));
+                          }}
+                        >
+                          <View style={[styles.checkboxBox, cat.selecionado && styles.checkboxChecked]} />
+                          <Text style={styles.checkboxText} numberOfLines={1}>
+                            {cat.nome}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+
+                  {/* Botões de Ação */}
+                  <TouchableOpacity 
+                    style={styles.applyButton} 
+                    onPress={aplicarFiltrosAvancados}
+                  >
+                    <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.closeButtonModal} onPress={limparFiltros}>
+                    <Text style={styles.closeButtonText}>Limpar Filtros</Text>
+                  </TouchableOpacity>
+
+                </ScrollView>
+              </Animated.View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Animated.View>
+      </Modal>
     </MainLayout>
   );
 }
@@ -580,11 +804,9 @@ const styles = StyleSheet.create({
     color: '#16A34A',
     marginTop: 8,
   },
-
   imageContainer: {
     position: 'relative',
   },
-
   favoriteButton: {
     position: 'absolute',
     top: 12,
@@ -597,4 +819,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 3,
   },
+  // Estilos corrigidos para o Modal ocupar a largura ideal sem encolher
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  overlayTouchable: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  cardWrapperTouchable: { width: '90%', maxWidth: 400, alignItems: 'center' },
+  filterCard: { width: '100%', maxHeight: SCREEN_HEIGHT * 0.8, backgroundColor: '#D9D9D9', borderRadius: 24, padding: 20, borderWidth: 4, borderColor: '#1E1848' },
+  sectionHeaderModal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  sectionTitleModal: { fontSize: 18, fontWeight: '700', color: '#1E1848' },
+  inputContainer: { flexDirection: 'row', alignItems: 'center'},
+  currency: { fontSize: 14, fontWeight: '700', color: '#1E1848', marginRight: 4 },
+  inputBox: { fontSize: 16, fontWeight: '700', color: '#1E1848', minWidth: 60, textAlign: 'right', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#483AAE', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4  },
+  sliderBar: { height: 6, backgroundColor: '#483AAE', borderRadius: 3, marginVertical: 8, position: 'relative', justifyContent: 'center' },
+  sliderThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#C51212', position: 'absolute', alignSelf: 'center' },
+  sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  limitLabel: { fontSize: 12, fontWeight: '700', color: '#1E1848' },
+  dropdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
+  dropdownTitle: { fontSize: 15, fontWeight: '600', color: '#1E1848' },
+  checkboxGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 10, borderRadius: 12, marginTop: 5 },
+  checkboxItem: { width: '48%', flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
+  checkboxBox: { width: 16, height: 16, borderWidth: 1, borderColor: 'transparent', borderRadius: 4, marginRight: 8, elevation: 1, shadowColor: '#1E1848', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 3},
+  checkboxChecked: { backgroundColor: '#C51212' },
+  checkboxText: { fontSize: 13, color: '#1E1848', fontWeight: '500' },
+  applyButton: { backgroundColor: '#483AAE', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 20 },
+  applyButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  closeButtonModal: { paddingVertical: 10, alignItems: 'center', marginTop: 5 },
+  closeButtonText: { color: '#DC2626', fontWeight: '600', fontSize: 14 }
 });

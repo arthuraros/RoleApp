@@ -574,5 +574,65 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
       }
     );
   });
+
+  // ==========================================
+  // 9. CADASTRO DIRETO DE NOVO PARCEIRO
+  // ==========================================
+  test('TU23 - cadastrarNovoParceiro: cria local com visivel=false e id_proprietario', async () => {
+    let localInserido = null;
+    let horariosInseridos = null;
+
+    supabase.from = (table) => {
+      if (table === 'solicitacoes_parceria') {
+        return {
+          insert: () => ({
+            select: () => ({
+              single: async () => ({ data: { id_solicitacao: 1 }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'locais') {
+        return {
+          insert: (rows) => {
+            localInserido = rows[0];
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id_local: 99, ...rows[0] },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      }
+      if (table === 'horarios_funcionamento') {
+        return {
+          insert: async (rows) => {
+            horariosInseridos = rows;
+            return { error: null };
+          },
+        };
+      }
+      throw new Error(`Tabela inesperada: ${table}`);
+    };
+
+    const criado = await parceiroService.cadastrarNovoParceiro({
+      idUsuario: 'user-uuid-99',
+      nome: 'Carlos',
+      email: 'carlos@test.com',
+      estabelecimento: 'Bar do Carlos',
+      cidadeEstado: 'Brasília, DF',
+    });
+
+    assert.equal(criado.id_local, 99);
+    assert.equal(localInserido.nome, 'Bar do Carlos');
+    assert.equal(localInserido.preco, 1);
+    assert.equal(localInserido.faixa_preco, '$');
+    assert.equal(localInserido.visivel, false);
+    assert.equal(localInserido.id_proprietario, 'user-uuid-99');
+    assert.equal(horariosInseridos.length, 7);
+  });
 });
 

@@ -25,6 +25,72 @@ export const parceiroService = {
   },
 
   /**
+   * Cadastra novo parceiro criando o local imediatamente (invisível por padrão)
+   */
+  async cadastrarNovoParceiro({ idUsuario, nome, email, estabelecimento, cidadeEstado }) {
+    // 1. Grava a solicitação para histórico
+    try {
+      await this.enviarSolicitacaoParceria({
+        idUsuario,
+        nome,
+        email,
+        estabelecimento,
+        cidadeEstado,
+      });
+    } catch (errSolicitacao) {
+      console.warn('Erro ao salvar solicitação de parceria:', errSolicitacao);
+    }
+
+    // 2. Cria o novo local em 'locais' mantendo visivel: false até o dono ativar
+    const { data: novoLocal, error: localError } = await supabase
+      .from('locais')
+      .insert([
+        {
+          nome: estabelecimento,
+          cidade_uf: cidadeEstado || 'Brasília, DF',
+          endereco: 'Endereço a definir',
+          preco: 1, // Atende à constraint CHECK (preco > 0)
+          preco_entrada: 0,
+          faixa_preco: '$',
+          id_proprietario: idUsuario || null,
+          visivel: false,
+        },
+      ])
+      .select()
+      .single();
+
+    if (localError) throw new Error(localError.message);
+
+    // 3. Cadastra os horários de funcionamento padrão
+    if (novoLocal?.id_local) {
+      try {
+        const dias = [
+          { dia: 0, fechado: true, abre: null, fecha: null },
+          { dia: 1, fechado: false, abre: '08:00', fecha: '18:00' },
+          { dia: 2, fechado: false, abre: '08:00', fecha: '18:00' },
+          { dia: 3, fechado: false, abre: '08:00', fecha: '18:00' },
+          { dia: 4, fechado: false, abre: '08:00', fecha: '18:00' },
+          { dia: 5, fechado: false, abre: '08:00', fecha: '18:00' },
+          { dia: 6, fechado: false, abre: '08:00', fecha: '18:00' },
+        ];
+        await supabase.from('horarios_funcionamento').insert(
+          dias.map((d) => ({
+            id_local: novoLocal.id_local,
+            dia_semana: d.dia,
+            horario_abertura: d.abre,
+            horario_fechamento: d.fecha,
+            fechado: d.fechado,
+          }))
+        );
+      } catch (errHorarios) {
+        console.warn('Erro ao cadastrar horários padrão:', errHorarios);
+      }
+    }
+
+    return novoLocal;
+  },
+
+  /**
    * Busca os estabelecimentos vinculados ao parceiro
    */
   async getLocaisDoParceiro(idUsuario) {
@@ -350,7 +416,8 @@ export const parceiroService = {
           endereco,
           preco,
           preco_entrada,
-          faixa_preco
+          faixa_preco,
+          visivel
         )
       `)
       .eq('tipo', 'destaque')
@@ -358,7 +425,10 @@ export const parceiroService = {
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
-    return data || [];
+    const visiveis = (data || []).filter(
+      (campanha) => !campanha.locais || campanha.locais.visivel !== false
+    );
+    return visiveis;
   },
 };
 

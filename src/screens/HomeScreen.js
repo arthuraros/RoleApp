@@ -272,6 +272,7 @@ export function HomeScreen({ navigation }) {
     try {
       setLoading(true);
       const data = await locaisService.getLocais();
+      console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
 
       const listaLocais = Array.isArray(data) && data.length > 0
         ? data

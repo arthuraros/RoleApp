@@ -50,10 +50,6 @@ export function EditarLocaisScreen({ navigation, route }) {
   // Horários e Eventos
   const [hours, setHours] = useState(DEFAULT_HOURS);
   const [events, setEvents] = useState([]);
-  const [newEventTitle, setNewEventTitle] = useState('');
-  const [newEventDays, setNewEventDays] = useState('');
-  const [newEventTime, setNewEventTime] = useState('');
-  const [newEventDetails, setNewEventDetails] = useState('');
 
   // Carrega lista de locais do parceiro
   const loadLocais = useCallback(async () => {
@@ -150,37 +146,6 @@ export function EditarLocaisScreen({ navigation, route }) {
       )
     );
     Alert.alert('Sucesso', 'Horários replicados para todos os dias abertos.');
-  };
-
-  const handleAddEvent = async () => {
-    if (!newEventTitle.trim()) {
-      Alert.alert('Atenção', 'Informe ao menos o nome do evento.');
-      return;
-    }
-    if (!currentLocal?.id_local) {
-      Alert.alert('Atenção', 'Nenhum local selecionado.');
-      return;
-    }
-
-    try {
-      const created = await parceiroService.criarEvento({
-        idLocal: currentLocal.id_local,
-        titulo: newEventTitle.trim(),
-        dias: newEventDays.trim() || 'Diário',
-        hora: newEventTime.trim() || '18:00',
-        detalhes: newEventDetails.trim(),
-      });
-
-      setEvents((prev) => [created, ...prev]);
-      setNewEventTitle('');
-      setNewEventDays('');
-      setNewEventTime('');
-      setNewEventDetails('');
-      Alert.alert('Sucesso', 'Evento adicionado com sucesso!');
-    } catch (err) {
-      console.error('Erro ao adicionar evento:', err);
-      Alert.alert('Erro', err.message || 'Não foi possível adicionar o evento.');
-    }
   };
 
   const handleRemoveEvent = async (idEvento) => {
@@ -547,62 +512,7 @@ export function EditarLocaisScreen({ navigation, route }) {
               );
             })}
 
-            {/* Novo evento Box */}
-            <View style={styles.newEventBox}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Novo evento</Text>
-                <TextInput
-                  style={styles.textInputCompact}
-                  value={newEventTitle}
-                  onChangeText={setNewEventTitle}
-                  placeholder="Nome do evento ou promoção"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
 
-              <View style={styles.twoColsRow}>
-                <View style={[styles.inputGroup, styles.colFlex]}>
-                  <Text style={styles.inputLabel}>Dia(s)</Text>
-                  <TextInput
-                    style={styles.textInputCompact}
-                    value={newEventDays}
-                    onChangeText={setNewEventDays}
-                    placeholder="Ex: Seg a Qui"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-
-                <View style={[styles.inputGroup, styles.colFlex]}>
-                  <Text style={styles.inputLabel}>Hora</Text>
-                  <TextInput
-                    style={styles.textInputCompact}
-                    value={newEventTime}
-                    onChangeText={setNewEventTime}
-                    placeholder="Ex: 19:00"
-                    placeholderTextColor="#9CA3AF"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Detalhes</Text>
-                <TextInput
-                  style={styles.textInputCompact}
-                  value={newEventDetails}
-                  onChangeText={setNewEventDetails}
-                  placeholder="Regras, preços ou diferenciais"
-                  placeholderTextColor="#9CA3AF"
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.addEventButton}
-                onPress={handleAddEvent}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.addEventButtonText}>+ Adicionar evento</Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Footer Actions */}

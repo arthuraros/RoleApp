@@ -154,10 +154,11 @@ export function HomeScreen({ navigation }) {
       setLoading(true);
       const data = await locaisService.getLocais();
       console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
+      const visiveis = Array.isArray(data) ? data.filter((item) => item.visivel !== false) : [];
 
       setLocais(
-        Array.isArray(data) && data.length > 0
-          ? data
+        visiveis.length > 0
+          ? visiveis
           : [
             {
               id_local: 'demo-1',

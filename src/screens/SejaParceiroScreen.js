@@ -70,9 +70,9 @@ const FAQS = [
     question: 'Em quanto tempo meu local aparece no app?',
     renderAnswer: () => (
       <Text style={styles.faqAnswerText}>
-        Após a aprovação do cadastro{' '}
-        <Text style={styles.faqHighlightPurple}>(até 48h)</Text>
-        , seu local entra no ar automaticamente.
+        Seu local é criado imediatamente no seu painel! Ele só aparecerá nas buscas do app{' '}
+        <Text style={styles.faqHighlightPurple}>quando você ativar a opção "Local visível"</Text>
+        {' '}em "Editar locais".
       </Text>
     ),
   },
@@ -121,7 +121,7 @@ export function SejaParceiroScreen({ navigation }) {
 
     setLoading(true);
     try {
-      await parceiroService.enviarSolicitacaoParceria({
+      const novoLocal = await parceiroService.cadastrarNovoParceiro({
         idUsuario: user?.id_usuario || user?.id || null,
         nome: nome.trim(),
         email: email.trim(),
@@ -130,21 +130,22 @@ export function SejaParceiroScreen({ navigation }) {
       });
 
       Alert.alert(
-        'Cadastro enviado!',
-        'Recebemos os dados do seu estabelecimento. Nossa equipe entrará em contato em até 48 horas.',
+        'Local cadastrado com sucesso!',
+        'Seu local foi criado! Ele ficará invisível para o público até que você configure as informações e o ative em "Editar locais".',
         [
           {
-            text: 'OK',
+            text: 'Ir para o Painel',
             onPress: () => {
               setEstabelecimento('');
               setCidadeEstado('');
+              navigation?.navigate('PainelParceiro', { local: novoLocal });
             },
           },
         ]
       );
     } catch (err) {
-      console.error('Erro ao enviar solicitação:', err);
-      Alert.alert('Erro', err.message || 'Não foi possível enviar o cadastro. Tente novamente.');
+      console.error('Erro ao cadastrar parceiro:', err);
+      Alert.alert('Erro', err.message || 'Não foi possível cadastrar o local. Tente novamente.');
     } finally {
       setLoading(false);
     }

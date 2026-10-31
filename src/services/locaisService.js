@@ -8,6 +8,7 @@ export const locaisService = {
     const { data, error } = await supabase
       .from('locais')
       .select('*')
+      .eq('visivel', true)
       .order('created_at', { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -35,6 +36,7 @@ export const locaisService = {
     const { data, error } = await supabase
       .from('locais')
       .select('*')
+      .eq('visivel', true)
       .or(`nome.ilike.%${searchTerm}%,endereco.ilike.%${searchTerm}%`);
 
     if (error) throw new Error(error.message);

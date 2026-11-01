@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Dimensions } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Dimensions , Linking } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { parceiroService } from '../services/parceiroService';
 import { categoriasService } from '../services/categoriasService';
@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { favoritosService } from '../services/favoritosService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Location from 'expo-location';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -33,6 +34,18 @@ const DESTAQUES_FALLBACK = [
   },
 ];
 
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export function HomeScreen({ navigation }) {
   const [locais, setLocais] = useState([]);
   const [locaisFiltrados, setLocaisFiltrados] = useState([]);
@@ -48,6 +61,7 @@ export function HomeScreen({ navigation }) {
   const [price, setPrice] = useState('');
   const [distance, setDistance] = useState('');
   const [showTipoRolde, setShowTipoRolde] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
   
   const [tiposRolde, setTiposRolde] = useState([]);
 
@@ -190,6 +204,15 @@ export function HomeScreen({ navigation }) {
     carregarLocais();
     carregarDestaques();
     carregarCategorias();
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        }
+      } catch (e) {}
+    })();
   }, []);
 
   useEffect(() => {
@@ -219,6 +242,45 @@ export function HomeScreen({ navigation }) {
             const valorLocal = l.preco ?? l.preco_entrada;
             return valorLocal != null && Number(valorLocal) <= precoMaximo;
           });
+        }
+      }
+
+      if (distance.trim() !== '') {
+        const distanciaMaxima = parseFloat(distance.replace(',', '.'));
+        if (!isNaN(distanciaMaxima) && distanciaMaxima > 0) {
+          let coords = userLocation;
+          if (!coords) {
+            try {
+              const { status } = await Location.requestForegroundPermissionsAsync();
+              if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+                coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+                setUserLocation(coords);
+              } else {
+                Alert.alert(
+                  'Permissão de Localização Negada',
+                  'O RolêApp precisa de acesso ao seu GPS para encontrar rolês perto de você.\n\nComo a permissão foi recusada, autorize o acesso à localização nas Configurações do seu aparelho.',
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Abrir Configurações', onPress: () => Linking.openSettings().catch(() => {}) },
+                  ]
+                );
+              }
+            } catch (err) {
+              console.warn('Erro ao obter localização na Home:', err);
+            }
+          }
+
+          if (coords) {
+            locaisBase = locaisBase.filter((l) => {
+              if (l.latitude == null || l.longitude == null) return false;
+              const lat = parseFloat(l.latitude);
+              const lng = parseFloat(l.longitude);
+              if (isNaN(lat) || isNaN(lng)) return false;
+              const dist = haversineKm(coords.lat, coords.lng, lat, lng);
+              return dist <= distanciaMaxima;
+            });
+          }
         }
       }
 

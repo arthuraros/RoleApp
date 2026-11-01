@@ -29,7 +29,9 @@ describe('Testes de Unidade - Módulo locaisService (RolêApp)', () => {
     // Mock das chamadas encadeadas do Supabase
     supabase.from = () => ({
       select: () => ({
-        order: async () => ({ data: mockData, error: null }),
+        eq: () => ({
+          order: async () => ({ data: mockData, error: null }),
+        }),
       }),
     });
 
@@ -41,7 +43,9 @@ describe('Testes de Unidade - Módulo locaisService (RolêApp)', () => {
   test('TU02 - getLocais: lança erro formatado quando a consulta falha no banco', async () => {
     supabase.from = () => ({
       select: () => ({
-        order: async () => ({ data: null, error: { message: 'Erro de conexão com a tabela locais' } }),
+        eq: () => ({
+          order: async () => ({ data: null, error: { message: 'Erro de conexão com a tabela locais' } }),
+        }),
       }),
     });
 
@@ -100,10 +104,12 @@ describe('Testes de Unidade - Módulo locaisService (RolêApp)', () => {
 
     supabase.from = () => ({
       select: () => ({
-        or: async (filtro) => {
-          queryFiltro = filtro;
-          return { data: [{ id_local: 1, nome: 'Bistrô Central' }], error: null };
-        },
+        eq: () => ({
+          or: async (filtro) => {
+            queryFiltro = filtro;
+            return { data: [{ id_local: 1, nome: 'Bistrô Central' }], error: null };
+          },
+        }),
       }),
     });
 

@@ -30,7 +30,9 @@ export function MainLayout({
   onSelectCategory,
   economyValue = 'R$ 450',
   discountValue = '40%',
+  hideCategories = false,
   children,
+  
 }) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -61,31 +63,50 @@ export function MainLayout({
       <View style={styles.body}>
           <View style={styles.contentContainer}>
           {/* Carrossel de Mascotes / Categorias */}
-          <ScrollView
-            horizontal
-            style={styles.categoriesContainer}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesScroll}
+         {/* Carrossel de Mascotes / Categorias */}
+{!hideCategories && (
+  <ScrollView
+    horizontal
+    style={styles.categoriesContainer}
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={styles.categoriesScroll}
+  >
+    {CATEGORIES.map((cat) => {
+      const isSelected = selectedCategory === cat.id;
+
+      return (
+        <TouchableOpacity
+          key={cat.id}
+          style={styles.categoryItem}
+          onPress={() => onSelectCategory && onSelectCategory(cat.id)}
+          activeOpacity={0.7}
+        >
+          <View
+            style={[
+              styles.pigBadge,
+              isSelected && styles.pigBadgeSelected,
+            ]}
           >
-            {CATEGORIES.map((cat) => {
-              const isSelected = selectedCategory === cat.id;
-              return (
-                <TouchableOpacity
-                  key={cat.id}
-                  style={styles.categoryItem}
-                  onPress={() => onSelectCategory && onSelectCategory(cat.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.pigBadge, isSelected && styles.pigBadgeSelected]}>
-                    <Image source={cat.icon} style={styles.pigImage} resizeMode="contain" />
-                  </View>
-                  <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            <Image
+              source={cat.icon}
+              style={styles.pigImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          <Text
+            style={[
+              styles.categoryText,
+              isSelected && styles.categoryTextSelected,
+            ]}
+          >
+            {cat.name}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </ScrollView>
+)}
 
           {/* Children da Tela (HomeScreen, FavoritosScreen, etc.) */}
           {children}

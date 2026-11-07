@@ -503,6 +503,7 @@ export function HomeScreen({ navigation }) {
       searchValue={search}
       onSearchChange={setSearch}
       onFilterPress={handleOpenFilter}
+      hideCategories={Boolean(search.trim())}
     >
       <FlatList
         style={{ flex: 1 }}
@@ -512,7 +513,22 @@ export function HomeScreen({ navigation }) {
         }}
         data={locaisFiltrados}
         keyExtractor={(item) => item.id_local.toString()}
-        ListHeaderComponent={renderHeader()}
+        ListHeaderComponent={
+  search.trim()
+    ? (
+      <Text style={styles.sectionTitle}>
+        Resultados para "{search.trim()}"
+      </Text>
+    )
+    : renderHeader()
+}
+ListEmptyComponent={
+  !loading ? (
+    <Text style={{ textAlign: 'center', marginTop: 24, color: '#64748B' }}>
+      Nenhum estabelecimento encontrado.
+    </Text>
+  ) : null
+}
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
         renderItem={({ item }) => (

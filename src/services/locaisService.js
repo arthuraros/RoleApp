@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { localEditPayload } from '../utils/partnership.js';
 
 export const locaisService = {
   /**
@@ -48,13 +49,7 @@ export const locaisService = {
    * @param {Object} local - Ex: { nome, descricao, endereco, preco, latitude, longitude, preco_entrada }
    */
   async createLocal(localData) {
-    const { data, error } = await supabase
-      .from('locais')
-      .insert([localData])
-      .select();
-
-    if (error) throw new Error(error.message);
-    return data[0];
+    throw new Error('Novos locais exigem revisão no Painel Administrativo.');
   },
 
   /**
@@ -63,7 +58,7 @@ export const locaisService = {
   async updateLocal(idLocal, updateData) {
     const { data, error } = await supabase
       .from('locais')
-      .update(updateData)
+      .update(localEditPayload(updateData))
       .eq('id_local', idLocal)
       .select();
 
@@ -75,12 +70,6 @@ export const locaisService = {
    * Deletar um local
    */
   async deleteLocal(idLocal) {
-    const { error } = await supabase
-      .from('locais')
-      .delete()
-      .eq('id_local', idLocal);
-
-    if (error) throw new Error(error.message);
-    return true;
+    throw new Error('Exclusão de locais requer um procedimento administrativo auditado.');
   },
 };

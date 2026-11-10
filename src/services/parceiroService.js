@@ -1,135 +1,34 @@
 import { supabase } from './supabase.js';
+import { createPartnerAccessService } from './partnerAccessService.js';
+import { localEditPayload } from '../utils/partnership.js';
+
+const accessService = createPartnerAccessService(supabase);
 
 export const parceiroService = {
-  /**
-   * Envia uma nova solicitação de parceria
-   */
-  async enviarSolicitacaoParceria({ idUsuario, nome, email, estabelecimento, cidadeEstado }) {
-    const { data, error } = await supabase
-      .from('solicitacoes_parceria')
-      .insert([
-        {
-          id_usuario: idUsuario || null,
-          nome,
-          email,
-          estabelecimento,
-          cidade_estado: cidadeEstado,
-          status: 'pendente',
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data;
-  },
-
-  /**
-   * Cadastra novo parceiro criando o local imediatamente (invisível por padrão)
-   */
-  async cadastrarNovoParceiro({ idUsuario, nome, email, estabelecimento, cidadeEstado }) {
-    // 1. Grava a solicitação para histórico
-    try {
-      await this.enviarSolicitacaoParceria({
-        idUsuario,
-        nome,
-        email,
-        estabelecimento,
-        cidadeEstado,
-      });
-    } catch (errSolicitacao) {
-      console.warn('Erro ao salvar solicitação de parceria:', errSolicitacao);
-    }
-
-    // 2. Cria o novo local em 'locais' mantendo visivel: false até o dono ativar
-    const { data: novoLocal, error: localError } = await supabase
-      .from('locais')
-      .insert([
-        {
-          nome: estabelecimento,
-          cidade_uf: cidadeEstado || 'Brasília, DF',
-          endereco: 'Endereço a definir',
-          preco: 1, // Atende à constraint CHECK (preco > 0)
-          preco_entrada: 0,
-          faixa_preco: '$',
-          id_proprietario: idUsuario || null,
-          visivel: false,
-        },
-      ])
-      .select()
-      .single();
-
-    if (localError) throw new Error(localError.message);
-
-    // 3. Cadastra os horários de funcionamento padrão
-    if (novoLocal?.id_local) {
-      try {
-        const dias = [
-          { dia: 0, fechado: true, abre: null, fecha: null },
-          { dia: 1, fechado: false, abre: '08:00', fecha: '18:00' },
-          { dia: 2, fechado: false, abre: '08:00', fecha: '18:00' },
-          { dia: 3, fechado: false, abre: '08:00', fecha: '18:00' },
-          { dia: 4, fechado: false, abre: '08:00', fecha: '18:00' },
-          { dia: 5, fechado: false, abre: '08:00', fecha: '18:00' },
-          { dia: 6, fechado: false, abre: '08:00', fecha: '18:00' },
-        ];
-        await supabase.from('horarios_funcionamento').insert(
-          dias.map((d) => ({
-            id_local: novoLocal.id_local,
-            dia_semana: d.dia,
-            horario_abertura: d.abre,
-            horario_fechamento: d.fecha,
-            fechado: d.fechado,
-          }))
-        );
-      } catch (errHorarios) {
-        console.warn('Erro ao cadastrar horários padrão:', errHorarios);
-      }
-    }
-
-    return novoLocal;
-  },
+  // Cadastro retorna uma solicitacao pendente; nunca cria local ou concede acesso.
+  enviarSolicitacaoParceria: accessService.enviarSolicitacaoParceria,
+  cadastrarNovoParceiro: accessService.enviarSolicitacaoParceria,
 
   /**
    * Busca os estabelecimentos vinculados ao parceiro
    */
   async getLocaisDoParceiro(idUsuario) {
-    if (!idUsuario) {
-      // Fallback para exibir locais existentes caso não esteja autenticado
-      const { data, error } = await supabase
-        .from('locais')
-        .select('*')
-        .order('id_local', { ascending: true })
-        .limit(5);
+  if (!idUsuario) {
+    return [];
+  }
 
-      if (error) throw new Error(error.message);
-      return data || [];
-    }
+  const { data, error } = await supabase
+    .from('locais')
+    .select('*')
+    .eq('id_proprietario', idUsuario)
+    .order('created_at', { ascending: false });
 
-    // Busca locais associados ao id_proprietario
-    const { data: parceiroLocais, error: pError } = await supabase
-      .from('locais')
-      .select('*')
-      .eq('id_proprietario', idUsuario)
-      .order('created_at', { ascending: false });
+  if (error) {
+    throw new Error(error.message);
+  }
 
-    if (pError) throw new Error(pError.message);
-
-    // Se o usuário ainda não tiver locais associados com id_proprietario,
-    // retorna os primeiros locais da base como fallback para edição
-    if (!parceiroLocais || parceiroLocais.length === 0) {
-      const { data: allLocais, error: allErr } = await supabase
-        .from('locais')
-        .select('*')
-        .order('id_local', { ascending: true })
-        .limit(5);
-
-      if (allErr) throw new Error(allErr.message);
-      return allLocais || [];
-    }
-
-    return parceiroLocais;
-  },
+  return data || [];
+},
 
   /**
    * Busca detalhes completos do local (incluindo horários e eventos)
@@ -171,7 +70,7 @@ export const parceiroService = {
   async updateLocal(idLocal, updateData) {
     const { data, error } = await supabase
       .from('locais')
-      .update(updateData)
+      .update(localEditPayload(updateData))
       .eq('id_local', idLocal)
       .select();
 
@@ -287,48 +186,7 @@ export const parceiroService = {
     return data || [];
   },
 
-  /**
-   * Registra métricas diárias (views, cliques, visitas)
-   * Prioriza a RPC atômica incrementar_metrica; se não existir, usa fallback upsert
-   */
-  async registrarMetrica({ idLocal, data = new Date().toISOString().split('T')[0], views = 0, cliques = 0, visitas = 0 }) {
-    if (!idLocal || String(idLocal).startsWith('demo-')) return null;
-
-    if (typeof supabase.rpc === 'function') {
-      try {
-        const { data: rpcRes, error: rpcError } = await supabase.rpc('incrementar_metrica', {
-          p_id_local: Number(idLocal),
-          p_views: views,
-          p_cliques: cliques,
-          p_visitas: visitas,
-          p_data: data,
-        });
-        if (!rpcError) return rpcRes || { success: true };
-      } catch (err) {
-        // Segue para fallback
-      }
-    }
-
-    const { data: res, error } = await supabase
-      .from('metricas_locais')
-      .upsert(
-        [
-          {
-            id_local: idLocal,
-            data,
-            views,
-            cliques,
-            visitas,
-          },
-        ],
-        { onConflict: 'id_local,data' }
-      )
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return res;
-  },
+  registrarMetrica: accessService.registrarMetrica,
 
   /**
    * Busca campanhas do parceiro / local
@@ -348,87 +206,7 @@ export const parceiroService = {
     return data || [];
   },
 
-  /**
-   * Cria uma nova campanha de impulsionamento
-   */
-  async criarCampanha({
-    idLocal,
-    idUsuario,
-    tipo,
-    titulo,
-    mensagem,
-    interesses,
-    faixaEtaria,
-    raioKm = 5,
-    duracaoDias = 7,
-    valorTotal,
-  }) {
-    const dataInicio = new Date();
-    const dataFim = new Date();
-    dataFim.setDate(dataFim.getDate() + duracaoDias);
-
-    const { data, error } = await supabase
-      .from('campanhas_impulsionamento')
-      .insert([
-        {
-          id_local: idLocal,
-          id_usuario: idUsuario,
-          tipo,
-          titulo: tipo === 'destaque' ? titulo : null,
-          mensagem: tipo === 'destaque' ? mensagem : null,
-          interesses: interesses || [],
-          faixa_etaria: faixaEtaria || 'Todos',
-          raio_km: raioKm,
-          duracao_dias: duracaoDias,
-          valor_total: valorTotal,
-          status: 'ativa',
-          alcance: 0,
-          data_inicio: dataInicio.toISOString(),
-          data_fim: dataFim.toISOString(),
-        },
-      ])
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    return data;
-  },
-
-  /**
-   * Busca as campanhas de destaque ativas para exibição na HomeScreen
-   */
-  async getDestaquesAtivos() {
-    const { data, error } = await supabase
-      .from('campanhas_impulsionamento')
-      .select(`
-        id_campanha,
-        id_local,
-        tipo,
-        titulo,
-        mensagem,
-        status,
-        data_fim,
-        created_at,
-        locais (
-          id_local,
-          nome,
-          descricao,
-          endereco,
-          preco,
-          preco_entrada,
-          faixa_preco,
-          visivel
-        )
-      `)
-      .eq('tipo', 'destaque')
-      .eq('status', 'ativa')
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(error.message);
-    const visiveis = (data || []).filter(
-      (campanha) => !campanha.locais || campanha.locais.visivel !== false
-    );
-    return visiveis;
-  },
+  criarCampanha: accessService.criarCampanha,
+  getDestaquesAtivos: accessService.getDestaquesAtivos,
+  listarOfertasCampanha: accessService.listarOfertasCampanha,
 };
-

@@ -70,9 +70,8 @@ const FAQS = [
     question: 'Em quanto tempo meu local aparece no app?',
     renderAnswer: () => (
       <Text style={styles.faqAnswerText}>
-        Seu local é criado imediatamente no seu painel! Ele só aparecerá nas buscas do app{' '}
-        <Text style={styles.faqHighlightPurple}>quando você ativar a opção "Local visível"</Text>
-        {' '}em "Editar locais".
+        Sua solicitação passa por análise. Após a aprovação da parceria, você poderá{' '}
+        <Text style={styles.faqHighlightPurple}>configurar e publicar seu estabelecimento</Text>.
       </Text>
     ),
   },
@@ -89,7 +88,7 @@ const FAQS = [
 ];
 
 export function SejaParceiroScreen({ navigation }) {
-  const { user } = useAuth();
+  const { user, isPartner, refreshProfile } = useAuth();
   const scrollViewRef = useRef(null);
   const [formY, setFormY] = useState(0);
   const [expandedFaqs, setExpandedFaqs] = useState({});
@@ -121,7 +120,7 @@ export function SejaParceiroScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const novoLocal = await parceiroService.cadastrarNovoParceiro({
+      await parceiroService.enviarSolicitacaoParceria({
         idUsuario: user?.id_usuario || user?.id || null,
         nome: nome.trim(),
         email: email.trim(),
@@ -130,15 +129,14 @@ export function SejaParceiroScreen({ navigation }) {
       });
 
       Alert.alert(
-        'Local cadastrado com sucesso!',
-        'Seu local foi criado! Ele ficará invisível para o público até que você configure as informações e o ative em "Editar locais".',
+        'Solicitação enviada!',
+        'Sua solicitação está pendente de análise. O acesso de parceiro será liberado após aprovação.',
         [
           {
-            text: 'Ir para o Painel',
+            text: 'OK',
             onPress: () => {
               setEstabelecimento('');
               setCidadeEstado('');
-              navigation?.navigate('PainelParceiro', { local: novoLocal });
             },
           },
         ]
@@ -174,10 +172,11 @@ export function SejaParceiroScreen({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => navigation?.navigate('PainelParceiro')}
+              onPress={() => isPartner
+                ? navigation?.navigate('MainTabs', { screen: 'MeusLugares' }) : refreshProfile()}
               activeOpacity={0.7}
             >
-              <Text style={styles.alreadyPartnerText}>Já sou parceiro</Text>
+              <Text style={styles.alreadyPartnerText}>{isPartner ? 'Meus Lugares' : 'Atualizar acesso'}</Text>
             </TouchableOpacity>
           </View>
 

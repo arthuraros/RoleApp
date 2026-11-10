@@ -21,7 +21,7 @@ import { supabase } from '../services/supabase.js';
 const MAX_FILE_SIZE_MB = 5;
 
 export function PerfilScreen({ navigation }) {
-  const { user, logout, updateUserAvatar } = useAuth();
+  const { user, logout, updateUserAvatar, isAdmin, refreshProfile, profileError } = useAuth();
   
   const [avatarUri, setAvatarUri] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
@@ -214,6 +214,14 @@ export function PerfilScreen({ navigation }) {
             </View>
 
             <View style={styles.menuList}>
+              {isAdmin && <TouchableOpacity style={styles.menuItem}
+                onPress={() => navigation.navigate('PainelAdmin')}>
+                <Text style={styles.menuText}>Painel Administrativo</Text>
+              </TouchableOpacity>}
+              <TouchableOpacity style={styles.menuItem} onPress={refreshProfile}>
+                <Text style={styles.menuText}>Atualizar permissões</Text>
+              </TouchableOpacity>
+              {profileError && <Text>{profileError}</Text>}
               <TouchableOpacity style={styles.menuItem}>
                 <Text style={styles.menuText}>Configurações</Text>
               </TouchableOpacity>

@@ -1,0 +1,38 @@
+import { normalizeRole, getPermissions } from '../utils/permissions.js';
+
+// Cliente injetado permite testes sem inicializar Auth, Storage ou rede.
+// Nenhuma operação deste serviço cria ou promove usuários.
+export function createProfileService(client) {
+  return {
+    async getCurrentProfile() {
+      const { data: authData, error: authError } = await client.auth.getUser();
+      if (authError) throw new Error('Não foi possível validar o usuário autenticado.');
+      const userId = authData?.user?.id;
+      if (!userId) return null;
+
+      const [profileResult, roleResult] = await Promise.all([
+        client.from('usuarios').select('id_usuario, foto_url')
+          .eq('id_usuario', userId).maybeSingle(),
+        client.from('user_roles').select('user_id, role')
+          .eq('user_id', userId).maybeSingle(),
+      ]);
+
+      if (profileResult.error || roleResult.error) {
+        // Não propaga mensagens arbitrárias do servidor para logs de autenticação.
+        throw new Error('Perfil ou permissões indisponíveis. Verifique o esquema e as políticas de acesso.');
+      }
+      if ((profileResult.data && profileResult.data.id_usuario !== userId) ||
+          (roleResult.data && roleResult.data.user_id !== userId)) {
+        throw new Error('Resposta de perfil incompatível com o usuário autenticado.');
+      }
+
+      const role = normalizeRole(roleResult.data?.role);
+      return {
+        id_usuario: userId,
+        foto_url: profileResult.data?.foto_url ?? null,
+        role,
+        permissions: getPermissions(role),
+      };
+    },
+  };
+}

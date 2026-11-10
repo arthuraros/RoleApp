@@ -30,12 +30,6 @@ const ALL_INTERESTS = [
 
 const AGE_RANGES = ['Todos', '18–24', '25–34', '35+'];
 
-const DURATIONS = [
-  { days: 3, label: '3 dias', total: 'R$ 180', valor: 180, publico: '1.600', views: '~1.120' },
-  { days: 7, label: '7 dias', total: 'R$ 420', valor: 420, publico: '3.700', views: '~2.630' },
-  { days: 14, label: '14 dias', total: 'R$ 840', valor: 840, publico: '7.400', views: '~5.260' },
-];
-
 export function ImpulsionarScreen({ navigation, route }) {
   const { user } = useAuth();
   const userId = user?.id_usuario || user?.id;
@@ -61,12 +55,14 @@ export function ImpulsionarScreen({ navigation, route }) {
   const [selectedAge, setSelectedAge] = useState('Todos');
   const [selectedDuration, setSelectedDuration] = useState(7);
   const [campaigns, setCampaigns] = useState([]);
+  const [offers, setOffers] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
   // Carrega locais e campanhas
   const loadData = useCallback(async () => {
     try {
       const dataLocais = await parceiroService.getLocaisDoParceiro(userId);
+      setOffers(await parceiroService.listarOfertasCampanha().catch(() => []));
       setLocais(dataLocais || []);
       const current = route?.params?.local || dataLocais?.[0] || null;
       if (current) {
@@ -101,10 +97,15 @@ export function ImpulsionarScreen({ navigation, route }) {
     );
   };
 
-  const currentDurationInfo =
-    DURATIONS.find((d) => d.days === selectedDuration) || DURATIONS[1];
+  const durations = offers.filter(offer => offer.tipo === mode && [3, 7, 14].includes(Number(offer.duracao_dias)))
+    .map(offer => ({ days: Number(offer.duracao_dias), label: `${offer.duracao_dias} dias`,
+      total: Number(offer.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }));
+  const currentDurationInfo = durations.find(d => d.days === selectedDuration) || durations[0];
 
   const handleAction = async () => {
+    if (!currentDurationInfo) {
+      Alert.alert('Campanhas indisponíveis', 'Aguarde as opções de duração e orçamento.'); return;
+    }
     if (!selectedLocal?.id_local) {
       Alert.alert('Atenção', 'Selecione um estabelecimento.');
       return;
@@ -127,21 +128,18 @@ export function ImpulsionarScreen({ navigation, route }) {
         faixaEtaria: selectedAge,
         raioKm: 5,
         duracaoDias: currentDurationInfo.days,
-        valorTotal: currentDurationInfo.valor,
       });
 
       setCampaigns((prev) => [novaCampanha, ...prev]);
 
-      const actionName =
-        mode === 'destaque' ? 'Destaque publicado' : 'Impulso ativado';
       Alert.alert(
-        actionName,
-        `Sua campanha para "${selectedLocal.nome}" foi salva no Supabase com sucesso! Duração: ${currentDurationInfo.label}.`,
+        'Campanha solicitada',
+        `Sua campanha para "${selectedLocal.nome}" foi registrada como rascunho. A ativação depende de análise e confirmação das condições.`,
         [{ text: 'OK' }]
       );
     } catch (err) {
       console.error('Erro ao criar campanha:', err);
-      Alert.alert('Erro', err.message || 'Não foi possível ativar a campanha.');
+      Alert.alert('Erro', err.message || 'Não foi possível solicitar a campanha.');
     } finally {
       setSubmitting(false);
     }
@@ -363,14 +361,14 @@ export function ImpulsionarScreen({ navigation, route }) {
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionHeading}>Orçamento e duração</Text>
             <View style={styles.costRow}>
-              <Text style={styles.costLabel}>Por dia</Text>
-              <Text style={styles.costValue}>R$ 60</Text>
+              <Text style={styles.costLabel}>Orçamento confirmado</Text>
+              <Text style={styles.costValue}>{currentDurationInfo?.total || 'Indisponível'}</Text>
             </View>
 
             {/* Duration Pills */}
             <View style={styles.segmentedContainer}>
-              {DURATIONS.map((dur) => {
-                const isSelected = selectedDuration === dur.days;
+              {durations.map((dur) => {
+                const isSelected = currentDurationInfo?.days === dur.days;
                 return (
                   <TouchableOpacity
                     key={dur.days}
@@ -398,12 +396,12 @@ export function ImpulsionarScreen({ navigation, route }) {
             <View style={styles.calculationCard}>
               <View style={styles.calcMetricsRow}>
                 <View style={styles.calcMetricCol}>
-                  <Text style={styles.calcNumber}>{currentDurationInfo.publico}</Text>
+                  <Text style={styles.calcNumber}>A confirmar</Text>
                   <Text style={styles.calcLabel}>pessoas no público</Text>
                 </View>
 
                 <View style={styles.calcMetricCol}>
-                  <Text style={styles.calcNumber}>{currentDurationInfo.views}</Text>
+                  <Text style={styles.calcNumber}>A confirmar</Text>
                   <Text style={styles.calcLabel}>visualizações estimadas</Text>
                 </View>
               </View>
@@ -412,10 +410,10 @@ export function ImpulsionarScreen({ navigation, route }) {
 
               <View style={styles.calcFooterRow}>
                 <Text style={styles.calcTotalLabel}>
-                  Total em {currentDurationInfo.label}
+                  Total em {currentDurationInfo?.label || 'duração a confirmar'}
                 </Text>
                 <Text style={styles.calcTotalValue}>
-                  {currentDurationInfo.total}
+                  {currentDurationInfo?.total || 'Indisponível'}
                 </Text>
               </View>
             </View>
@@ -425,13 +423,13 @@ export function ImpulsionarScreen({ navigation, route }) {
               style={[styles.actionButton, submitting && { opacity: 0.7 }]}
               onPress={handleAction}
               activeOpacity={0.85}
-              disabled={submitting}
+              disabled={submitting || !currentDurationInfo}
             >
               {submitting ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <Text style={styles.actionButtonText}>
-                  {mode === 'destaque' ? 'Publicar destaque' : 'Ativar impulso'}
+                  Solicitar campanha
                 </Text>
               )}
             </TouchableOpacity>
@@ -439,7 +437,7 @@ export function ImpulsionarScreen({ navigation, route }) {
 
           {/* Section: Campanhas ativas */}
           <View style={styles.sectionBlock}>
-            <Text style={styles.sectionHeading}>Campanhas ativas</Text>
+            <Text style={styles.sectionHeading}>Minhas campanhas</Text>
             {campaigns.length > 0 ? (
               campaigns.map((camp) => (
                 <View key={camp.id_campanha} style={[styles.activeCampaignCard, { marginBottom: 10 }]}>
@@ -460,14 +458,10 @@ export function ImpulsionarScreen({ navigation, route }) {
             ) : (
               <View style={styles.activeCampaignCard}>
                 <View style={styles.activeCampaignLeft}>
-                  <Text style={styles.activeCampaignTitle}>Impulso · 7 dias</Text>
+                  <Text style={styles.activeCampaignTitle}>Nenhuma campanha cadastrada</Text>
                   <Text style={styles.activeCampaignSubtitle}>
-                    {selectedLocal?.nome || 'Lanchonete'} · restam 3 dias
+                    As solicitações começam como rascunho, sem vigência até a ativação.
                   </Text>
-                </View>
-                <View style={styles.activeCampaignRight}>
-                  <Text style={styles.activeCampaignMetric}>4.820</Text>
-                  <Text style={styles.activeCampaignMetricLabel}>alcance</Text>
                 </View>
               </View>
             )}

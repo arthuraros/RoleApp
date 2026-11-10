@@ -176,7 +176,6 @@ export function EditarLocaisScreen({ navigation, route }) {
           bairro: bairro.trim(),
           cidade_uf: cidadeUf.trim(),
           visivel: isVisibleInApp,
-          ...(userId && !currentLocal.id_proprietario ? { id_proprietario: userId } : {}),
         }),
         parceiroService.salvarHorarios(currentLocal.id_local, hours),
       ]);

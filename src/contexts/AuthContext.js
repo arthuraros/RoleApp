@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, AppState } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
@@ -8,12 +8,15 @@ import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { getFriendlyAuthErrorMessage } from '../utils/authErrors';
+import { createProfileService } from '../services/profileService';
+import { getPermissions } from '../utils/permissions';
 
 const APP_REDIRECT_URL = 'roleapp://auth/callback';
 const RESET_PASSWORD_REDIRECT_URL = 'roleapp://reset-password';
 const RECOVERY_PENDING_KEY = '@roleapp_password_recovery_pending';
 
 const AuthContext = createContext({});
+const profileService = createProfileService(supabase);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -23,6 +26,45 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [confirmedNotice, setConfirmedNotice] = useState(null);
+  const [profileState, setProfileState] = useState({ profile: null, loading: false, error: null });
+  const profileRequest = useRef(0);
+  const profileUserId = isSupabaseConfigured && !isPasswordRecovery &&
+    session?.user?.id === user?.id ? user?.id : null;
+
+  const refreshProfile = useCallback(async () => {
+    const request = ++profileRequest.current;
+    setProfileState({ profile: null, loading: Boolean(profileUserId), error: null });
+    if (!profileUserId) return;
+    try {
+      const profile = await profileService.getCurrentProfile();
+      if (request !== profileRequest.current) return;
+      if (profile?.id_usuario !== profileUserId) {
+        throw new Error('Perfil indisponível para a sessão atual.');
+      }
+      setProfileState({ profile, loading: false, error: null });
+    } catch {
+      if (request === profileRequest.current) {
+        setProfileState({ profile: null, loading: false, error: 'Não foi possível carregar as permissões.' });
+      }
+    }
+  }, [profileUserId, session?.access_token]);
+
+  useEffect(() => {
+    refreshProfile();
+    return () => { profileRequest.current += 1; };
+  }, [refreshProfile]);
+
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', state => {
+      if (state === 'active') refreshProfile();
+    });
+    return () => listener.remove();
+  }, [refreshProfile]);
+
+  // Uma resposta da conta anterior nunca concede permissões à conta atual.
+  const profile = profileUserId && profileState.profile?.id_usuario === profileUserId
+    ? profileState.profile : null;
+  const permissions = getPermissions(profile?.role);
 
   const incomingUrl = Linking.useLinkingURL();
   const lastProcessed = useRef({ url: null, timestamp: 0 });
@@ -34,7 +76,6 @@ export function AuthProvider({ children }) {
       return;
     }
     lastProcessed.current = { url, timestamp: now };
-    console.log('[DeepLink] Processando URL:', url);
 
     try {
       const { params, errorCode } = QueryParams.getQueryParams(url);
@@ -105,7 +146,7 @@ export function AuthProvider({ children }) {
           Linking.clearInitialURL?.();
           return;
         } catch (pkceErr) {
-          console.warn('[DeepLink] Erro na troca de código PKCE:', pkceErr);
+          console.warn('[DeepLink] Falha na troca de código PKCE.');
           if (isSignupConfirmation) {
             setConfirmedNotice({
               title: 'E-mail confirmado!',
@@ -154,7 +195,7 @@ export function AuthProvider({ children }) {
 
       Linking.clearInitialURL?.();
     } catch (err) {
-      console.warn('[DeepLink] Erro ao processar:', err);
+      console.warn('[DeepLink] Falha ao processar autenticação.');
       setConfirmedNotice(null);
       if (url.includes('reset-password') || url.includes('type=recovery')) {
         setIsPasswordRecovery(false);
@@ -229,7 +270,7 @@ export function AuthProvider({ children }) {
           setLoading(false);
         }
       } catch (err) {
-        console.warn('Erro ao restaurar sessão do Supabase:', err);
+        console.warn('Falha ao restaurar sessão do Supabase.');
         if (isMounted) setLoading(false);
       }
     }
@@ -513,7 +554,7 @@ export function AuthProvider({ children }) {
       setSession(null);
       setIsPasswordRecovery(false);
     } catch (err) {
-      console.warn('Erro ao deslogar:', err);
+      console.warn('Falha ao deslogar.');
       setUser(null);
       setSession(null);
       setIsPasswordRecovery(false);
@@ -531,6 +572,14 @@ export function AuthProvider({ children }) {
       value={{
         user,
         session,
+        profile,
+        role: profile?.role ?? null,
+        permissions,
+        isPartner: permissions.isPartner,
+        isAdmin: permissions.isAdmin,
+        profileLoading: Boolean(profileUserId) && profileState.loading,
+        profileError: profileUserId ? profileState.error : null,
+        refreshProfile,
         loading,
         authLoading,
         error,

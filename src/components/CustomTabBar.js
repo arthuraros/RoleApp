@@ -44,6 +44,8 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
         return 'map';
       case 'Perfil':
         return 'user';
+      case 'MeusLugares':
+        return 'briefcase';
       default:
         return 'circle';
     }
@@ -53,6 +55,8 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
     switch (routeName) {
       case 'Home':
         return 'Início';
+      case 'MeusLugares':
+        return 'Meus Lugares';
       default:
         return routeName;
     }

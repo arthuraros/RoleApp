@@ -23,6 +23,9 @@ import { EstatisticasParceiroScreen } from '../screens/EstatisticasParceiroScree
 import { ImpulsionarScreen } from '../screens/ImpulsionarScreen';
 import { EditarLocaisScreen } from '../screens/EditarLocaisScreen';
 import { DetalhesLocalScreen } from '../screens/DetalhesLocalScreen';
+import { GerenciarCardapioScreen } from '../screens/GerenciarCardapioScreen';
+import { PainelAdminScreen } from '../screens/PainelAdminScreen';
+import { AccessGate } from '../components/AccessGate';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -40,6 +43,7 @@ function AuthNavigator() {
 
 function MainTabs() {
   const blurTargetRef = useRef(null);
+  const { isPartner } = useAuth();
 
   return (
     <BlurTargetView ref={blurTargetRef} style={styles.blurTarget}>
@@ -52,21 +56,31 @@ function MainTabs() {
         <Tab.Screen name="Favoritos" component={FavoritosScreen} />
         <Tab.Screen name="Mapa" component={MapaScreen} />
         <Tab.Screen name="Perfil" component={PerfilScreen} />
+        {isPartner && <Tab.Screen name="MeusLugares" component={PartnerPanel}
+          options={{ tabBarLabel: 'Meus Lugares' }} />}
       </Tab.Navigator>
     </BlurTargetView>
   );
 }
 
+function PartnerPanel(props) {
+  return <AccessGate role="parceiro"><PainelParceiroScreen {...props} /></AccessGate>;
+}
+
 function AppNavigator() {
+  const { isPartner, isAdmin } = useAuth();
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="SejaParceiro" component={SejaParceiroScreen} />
-      <Stack.Screen name="PainelParceiro" component={PainelParceiroScreen} />
-      <Stack.Screen name="EstatisticasParceiro" component={EstatisticasParceiroScreen} />
-      <Stack.Screen name="Impulsionar" component={ImpulsionarScreen} />
-      <Stack.Screen name="EditarLocais" component={EditarLocaisScreen} />
-      <Stack.Screen name="DetalhesLocal" component={DetalhesLocalScreen} />
+      {isPartner && <Stack.Group>
+        <Stack.Screen name="EstatisticasParceiro" component={EstatisticasParceiroScreen} />
+        <Stack.Screen name="Impulsionar" component={ImpulsionarScreen} />
+        <Stack.Screen name="EditarLocais" component={EditarLocaisScreen} />
+        <Stack.Screen name="GerenciarCardapio" component={GerenciarCardapioScreen} />
+      </Stack.Group>}
+      {isAdmin && <Stack.Screen name="PainelAdmin" component={PainelAdminScreen} />}
+    <Stack.Screen name="DetalhesLocal" component={DetalhesLocalScreen} />
     </Stack.Navigator>
   );
 }
@@ -78,7 +92,7 @@ const styles = StyleSheet.create({
 });
 
 export function Navigation() {
-  const { isAuthenticated, isPasswordRecovery, loading } = useAuth();
+  const { user, isAuthenticated, isPasswordRecovery, loading } = useAuth();
   const handleNavigationReady = React.useCallback(() => {
     SplashScreen.hideAsync().catch((error) => {
       console.warn('Erro ao ocultar SplashScreen:', error);
@@ -96,7 +110,7 @@ export function Navigation() {
           <Stack.Screen name="RedefinirSenha" component={RedefinirSenhaScreen} />
         </Stack.Navigator>
       ) : isAuthenticated ? (
-        <AppNavigator />
+        <AppNavigator key={user?.id} />
       ) : (
         <AuthNavigator />
       )}

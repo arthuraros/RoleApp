@@ -7,6 +7,7 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,7 +48,7 @@ export function PainelParceiroScreen({ navigation }) {
       setLocais(data);
       if (data && data.length > 0) {
         setSelectedLocal(data[0]);
-      }
+      } else setSelectedLocal(null);
     } catch (err) {
       console.warn('Erro ao carregar locais do parceiro:', err);
     } finally {
@@ -152,7 +153,7 @@ export function PainelParceiroScreen({ navigation }) {
         {/* Top Back Button */}
         <View style={styles.topBar}>
           <TouchableOpacity
-            onPress={() => navigation?.goBack()}
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')}
             style={styles.backButton}
             activeOpacity={0.7}
           >
@@ -294,6 +295,22 @@ export function PainelParceiroScreen({ navigation }) {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={[styles.actionCard, { marginBottom: 14, minHeight: 100 }]}
+          onPress={() => {
+            if (!selectedLocal?.id_local) {
+              Alert.alert('Atenção', 'Selecione um estabelecimento para gerenciar o cardápio.');
+              return;
+            }
+            navigation.navigate('GerenciarCardapio', { local: selectedLocal });
+          }}
+        >
+          <Text style={styles.actionCardTitle}>Gerenciar Cardápio</Text>
+          <Text style={styles.actionCardSubtitle}>
+            Cadastre e organize os produtos do seu estabelecimento
+          </Text>
+        </TouchableOpacity>
+
         {/* Action Cards (Impulsionar & Editar locais) */}
         <View style={styles.actionCardsRow}>
           <TouchableOpacity
@@ -301,6 +318,7 @@ export function PainelParceiroScreen({ navigation }) {
             onPress={() => navigation?.navigate('Impulsionar', { local: selectedLocal })}
             activeOpacity={0.85}
           >
+
             <Text style={styles.actionCardTitle}>Impulsionar</Text>
             <Text style={styles.actionCardSubtitle}>
               {'apareça para quem\ncurte o seu estilo'}
@@ -331,7 +349,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 18,
     paddingTop: 8,
-    paddingBottom: 28,
+    paddingBottom: 110,
   },
   topBar: {
     marginBottom: 12,

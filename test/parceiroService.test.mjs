@@ -18,91 +18,40 @@ if (supabase.auth) {
 }
 
 describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
+  beforeEach(() => {
+    supabase.auth.getUser=async()=>({data:{user:{id:'user-test'}},error:null});
+    supabase.rpc=async()=>{throw Error('RPC must be mocked');};
+    supabase.from=()=>{throw Error('Query must be mocked');};
+  });
+
 
   // ==========================================
   // 1. SOLICITAÇÕES DE PARCERIA
   // ==========================================
-  test('TU01 - enviarSolicitacaoParceria: grava solicitação com status pendente', async () => {
-    const payload = {
-      idUsuario: 'user-uuid-123',
-      nome: 'João Silva',
-      email: 'joao@email.com',
-      estabelecimento: 'Bar do João',
-      cidadeEstado: 'Brasília, DF',
-    };
+  test('TU01 - solicitacao usa conta autenticada e status pendente', async () => {
+  let inserted;
+  supabase.from = table => {
+    assert.equal(table,'solicitacoes_parceria');
+    return { insert: row => { inserted=row; return { select:()=>({single:async()=>({data:{id_solicitacao:1,...row},error:null})}) }; } };
+  };
+  const result = await parceiroService.enviarSolicitacaoParceria({idUsuario:'forjado',nome:'Teste',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'});
+  assert.equal(inserted.id_usuario,'user-test'); assert.equal(result.status,'pendente');
+});
 
-    let insertedData = null;
-    supabase.from = (table) => {
-      assert.equal(table, 'solicitacoes_parceria');
-      return {
-        insert: (data) => {
-          insertedData = data[0];
-          return {
-            select: () => ({
-              single: async () => ({
-                data: { id_solicitacao: 1, ...insertedData },
-                error: null,
-              }),
-            }),
-          };
-        },
-      };
-    };
-
-    const resultado = await parceiroService.enviarSolicitacaoParceria(payload);
-    assert.equal(resultado.id_solicitacao, 1);
-    assert.equal(resultado.status, 'pendente');
-    assert.equal(resultado.estabelecimento, 'Bar do João');
-    assert.equal(insertedData.id_usuario, 'user-uuid-123');
-  });
-
-  test('TU02 - enviarSolicitacaoParceria: propaga erro formatado quando insert falha', async () => {
-    supabase.from = () => ({
-      insert: () => ({
-        select: () => ({
-          single: async () => ({
-            data: null,
-            error: { message: 'Erro de validação ou restrição' },
-          }),
-        }),
-      }),
-    });
-
-    await assert.rejects(
-      async () => await parceiroService.enviarSolicitacaoParceria({
-        nome: 'A', email: 'b@b.com', estabelecimento: 'C', cidadeEstado: 'DF'
-      }),
-      {
-        name: 'Error',
-        message: 'Erro de validação ou restrição',
-      }
-    );
-  });
+  test('TU02 - erro de solicitacao nao cria local nem revela erro bruto', async () => {
+  supabase.from = table => { assert.equal(table,'solicitacoes_parceria'); return {
+    insert:()=>({select:()=>({single:async()=>({data:null,error:{message:'segredo'}})})})
+  }; };
+  await assert.rejects(parceiroService.enviarSolicitacaoParceria({nome:'A',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'}), /parceria/);
+});
 
   // ==========================================
   // 2. LOCAIS DO PARCEIRO
   // ==========================================
-  test('TU03 - getLocaisDoParceiro: executa fallback para listar locais quando idUsuario não é informado', async () => {
-    const mockLocaisGerais = [
-      { id_local: 1, nome: 'Café do Cerrado' },
-      { id_local: 2, nome: 'Parque das Águas' },
-    ];
-
-    supabase.from = (table) => {
-      assert.equal(table, 'locais');
-      return {
-        select: () => ({
-          order: () => ({
-            limit: async () => ({ data: mockLocaisGerais, error: null }),
-          }),
-        }),
-      };
-    };
-
-    const resultado = await parceiroService.getLocaisDoParceiro(null);
-    assert.deepEqual(resultado, mockLocaisGerais);
-    assert.equal(resultado.length, 2);
-  });
+  test('TU03 - sem usuario nao consulta locais de terceiros', async () => {
+  supabase.from=()=>{throw Error('Consulta indevida');};
+  assert.deepEqual(await parceiroService.getLocaisDoParceiro(null),[]);
+});
 
   test('TU04 - getLocaisDoParceiro: busca locais filtrando por id_proprietario', async () => {
     const mockLocaisParceiro = [
@@ -130,33 +79,11 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
     assert.equal(resultado[0].nome, 'Bistrô do Centro');
   });
 
-  test('TU05 - getLocaisDoParceiro: ativa fallback de amostra quando parceiro ainda não possui locais', async () => {
-    const mockAmostra = [{ id_local: 1, nome: 'Local Modelo' }];
-
-    let chamada = 0;
-    supabase.from = () => ({
-      select: () => {
-        chamada++;
-        if (chamada === 1) {
-          // Primeira chamada: busca por proprietário retorna vazio
-          return {
-            eq: () => ({
-              order: async () => ({ data: [], error: null }),
-            }),
-          };
-        }
-        // Segunda chamada: fallback para primeiros locais
-        return {
-          order: () => ({
-            limit: async () => ({ data: mockAmostra, error: null }),
-          }),
-        };
-      },
-    });
-
-    const resultado = await parceiroService.getLocaisDoParceiro('novo-usuario');
-    assert.deepEqual(resultado, mockAmostra);
-  });
+  test('TU05 - sem locais proprios retorna vazio sem fallback', async () => {
+  let calls=0;
+  supabase.from=()=>{calls++;return {select:()=>({eq:()=>({order:async()=>({data:[],error:null})})})};};
+  assert.deepEqual(await parceiroService.getLocaisDoParceiro('novo-usuario'),[]); assert.equal(calls,1);
+});
 
   // ==========================================
   // 3. DETALHES COMPLETOS DO LOCAL
@@ -389,34 +316,13 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
     assert.equal(metricas, null);
   });
 
-  test('TU17 - registrarMetrica: executa upsert com onConflict por id_local e data', async () => {
-    let upsertArgs = null;
-    supabase.from = (table) => {
-      assert.equal(table, 'metricas_locais');
-      return {
-        upsert: (rows, options) => {
-          upsertArgs = { rows, options };
-          return {
-            select: () => ({
-              single: async () => ({ data: { id_metrica: 1, ...rows[0] }, error: null }),
-            }),
-          };
-        },
-      };
-    };
-
-    const resultado = await parceiroService.registrarMetrica({
-      idLocal: 40,
-      data: '2026-10-30',
-      views: 15,
-      cliques: 5,
-      visitas: 2,
-    });
-
-    assert.equal(resultado.id_metrica, 1);
-    assert.equal(upsertArgs.options.onConflict, 'id_local,data');
-    assert.equal(upsertArgs.rows[0].views, 15);
-  });
+  test('TU17 - metrica envia evento unitario por RPC sem upsert', async () => {
+  let captured;
+  supabase.rpc=async(name,params)=>{captured={name,params};return {data:{registrada:true},error:null};};
+  const result=await parceiroService.registrarMetrica({idLocal:40,views:1,data:'2000-01-01'});
+  assert.equal(result.registrada,true);
+  assert.deepEqual(captured,{name:'registrar_interacao_segura',params:{p_id_local:'40',p_evento:'view'}});
+});
 
   // ==========================================
   // 8. CAMPANHAS DE IMPULSIONAMENTO
@@ -442,197 +348,40 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
     assert.equal(campanhas.length, 1);
   });
 
-  test('TU19 - criarCampanha (Destaque): calcula data de término e armazena título/mensagem', async () => {
-    let dadosInseridos = null;
-    supabase.from = (table) => {
-      assert.equal(table, 'campanhas_impulsionamento');
-      return {
-        insert: (dados) => {
-          dadosInseridos = dados[0];
-          return {
-            select: () => ({
-              single: async () => ({ data: { id_campanha: 200, ...dados[0] }, error: null }),
-            }),
-          };
-        },
-      };
-    };
+  test('TU19 - campanha recebe orcamento e status do servidor', async () => {
+  let captured;
+  supabase.rpc=async(name,params)=>{captured={name,params};return {data:{status:'rascunho',valor_total:420},error:null};};
+  const result=await parceiroService.criarCampanha({idLocal:5,idUsuario:'forjado',tipo:'destaque',titulo:'Oferta',mensagem:'Mensagem',valorTotal:0});
+  assert.equal(result.status,'rascunho'); assert.equal(result.valor_total,420);
+  assert.equal(captured.name,'solicitar_campanha_segura');
+  assert.ok(!('p_valor_total' in captured.params)); assert.ok(!('p_id_usuario' in captured.params));
+});
 
-    const resultado = await parceiroService.criarCampanha({
-      idLocal: 50,
-      idUsuario: 'uuid-user-partner',
-      tipo: 'destaque',
-      titulo: 'Combo Estudante R$ 9,90',
-      mensagem: 'Com carteirinha de estudante.',
-      interesses: ['Almoço barato', 'Universitários'],
-      faixaEtaria: '18–24',
-      raioKm: 5,
-      duracaoDias: 7,
-      valorTotal: 420,
-    });
+  test('TU20 - visibilidade usa RPC sem ativacao pelo cliente', async () => {
+  let captured;
+  supabase.rpc=async(name,params)=>{captured=params;return {data:{status:'rascunho',titulo:null},error:null};};
+  const result=await parceiroService.criarCampanha({idLocal:5,tipo:'visibilidade',titulo:'Ignorado no servidor'});
+  assert.equal(captured.p_tipo,'visibilidade'); assert.ok(!('status' in captured)); assert.equal(result.titulo,null);
+});
 
-    assert.equal(resultado.id_campanha, 200);
-    assert.equal(dadosInseridos.tipo, 'destaque');
-    assert.equal(dadosInseridos.titulo, 'Combo Estudante R$ 9,90');
-    assert.equal(dadosInseridos.mensagem, 'Com carteirinha de estudante.');
-    assert.equal(dadosInseridos.duracao_dias, 7);
-    assert.equal(dadosInseridos.valor_total, 420);
-    assert.ok(dadosInseridos.data_inicio);
-    assert.ok(dadosInseridos.data_fim);
-  });
+  test('TU21 - destaques usam projecao publica e exigem local visivel', async () => {
+  supabase.rpc=async(name)=>{assert.equal(name,'listar_destaques_publicos');return {data:[{id_campanha:1,locais:{visivel:true}},{id_campanha:2,locais:null}],error:null};};
+  assert.deepEqual(await parceiroService.getDestaquesAtivos(),[{id_campanha:1,locais:{visivel:true}}]);
+});
 
-  test('TU20 - criarCampanha (Visibilidade): anula campos de destaque específicos', async () => {
-    let dadosInseridos = null;
-    supabase.from = (table) => {
-      assert.equal(table, 'campanhas_impulsionamento');
-      return {
-        insert: (dados) => {
-          dadosInseridos = dados[0];
-          return {
-            select: () => ({
-              single: async () => ({ data: { id_campanha: 201, ...dados[0] }, error: null }),
-            }),
-          };
-        },
-      };
-    };
-
-    await parceiroService.criarCampanha({
-      idLocal: 50,
-      idUsuario: 'uuid-user-partner',
-      tipo: 'visibilidade',
-      titulo: 'Ignorado no modo visibilidade',
-      mensagem: 'Ignorado também',
-      interesses: ['Música ao vivo'],
-      faixaEtaria: 'Todos',
-      duracaoDias: 3,
-      valorTotal: 180,
-    });
-
-    assert.equal(dadosInseridos.tipo, 'visibilidade');
-    assert.equal(dadosInseridos.titulo, null);
-    assert.equal(dadosInseridos.mensagem, null);
-    assert.equal(dadosInseridos.valor_total, 180);
-  });
-
-  test('TU21 - getDestaquesAtivos: busca campanhas ativas de destaque com dados dos locais', async () => {
-    const mockDestaques = [
-      {
-        id_campanha: 1,
-        id_local: 10,
-        tipo: 'destaque',
-        titulo: 'Combo Estudante',
-        mensagem: 'Pastel + caldo de cana',
-        status: 'ativa',
-        locais: { id_local: 10, nome: 'Pastelaria Central' },
-      },
-    ];
-
-    let filtros = {};
-    supabase.from = (table) => {
-      assert.equal(table, 'campanhas_impulsionamento');
-      return {
-        select: () => ({
-          eq: (col1, val1) => {
-            filtros[col1] = val1;
-            return {
-              eq: (col2, val2) => {
-                filtros[col2] = val2;
-                return {
-                  order: async () => ({ data: mockDestaques, error: null }),
-                };
-              },
-            };
-          },
-        }),
-      };
-    };
-
-    const resultado = await parceiroService.getDestaquesAtivos();
-    assert.deepEqual(resultado, mockDestaques);
-    assert.equal(filtros.tipo, 'destaque');
-    assert.equal(filtros.status, 'ativa');
-    assert.equal(resultado.length, 1);
-  });
-
-  test('TU22 - getDestaquesAtivos: propaga erro quando a consulta falha no banco', async () => {
-    supabase.from = () => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            order: async () => ({ data: null, error: { message: 'Erro ao consultar destaques' } }),
-          }),
-        }),
-      }),
-    });
-
-    await assert.rejects(
-      async () => await parceiroService.getDestaquesAtivos(),
-      {
-        name: 'Error',
-        message: 'Erro ao consultar destaques',
-      }
-    );
-  });
+  test('TU22 - erro na projecao publica nao retorna dados por fallback', async () => {
+  supabase.rpc=async()=>({data:null,error:{message:'segredo'}});
+  await assert.rejects(parceiroService.getDestaquesAtivos(), /Oper/);
+});
 
   // ==========================================
   // 9. CADASTRO DIRETO DE NOVO PARCEIRO
   // ==========================================
-  test('TU23 - cadastrarNovoParceiro: cria local com visivel=false e id_proprietario', async () => {
-    let localInserido = null;
-    let horariosInseridos = null;
-
-    supabase.from = (table) => {
-      if (table === 'solicitacoes_parceria') {
-        return {
-          insert: () => ({
-            select: () => ({
-              single: async () => ({ data: { id_solicitacao: 1 }, error: null }),
-            }),
-          }),
-        };
-      }
-      if (table === 'locais') {
-        return {
-          insert: (rows) => {
-            localInserido = rows[0];
-            return {
-              select: () => ({
-                single: async () => ({
-                  data: { id_local: 99, ...rows[0] },
-                  error: null,
-                }),
-              }),
-            };
-          },
-        };
-      }
-      if (table === 'horarios_funcionamento') {
-        return {
-          insert: async (rows) => {
-            horariosInseridos = rows;
-            return { error: null };
-          },
-        };
-      }
-      throw new Error(`Tabela inesperada: ${table}`);
-    };
-
-    const criado = await parceiroService.cadastrarNovoParceiro({
-      idUsuario: 'user-uuid-99',
-      nome: 'Carlos',
-      email: 'carlos@test.com',
-      estabelecimento: 'Bar do Carlos',
-      cidadeEstado: 'Brasília, DF',
-    });
-
-    assert.equal(criado.id_local, 99);
-    assert.equal(localInserido.nome, 'Bar do Carlos');
-    assert.equal(localInserido.preco, 1);
-    assert.equal(localInserido.faixa_preco, '$');
-    assert.equal(localInserido.visivel, false);
-    assert.equal(localInserido.id_proprietario, 'user-uuid-99');
-    assert.equal(horariosInseridos.length, 7);
-  });
+  test('TU23 - alias de cadastro cria apenas solicitacao pendente', async () => {
+  let calls=0;
+  supabase.from=table=>{calls++;assert.equal(table,'solicitacoes_parceria');return {insert:row=>({select:()=>({single:async()=>({data:{id_solicitacao:3,...row},error:null})})})};};
+  const result=await parceiroService.cadastrarNovoParceiro({nome:'A',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'});
+  assert.equal(result.status,'pendente');assert.equal(result.id_local,undefined);assert.equal(calls,1);
+});
 });
 

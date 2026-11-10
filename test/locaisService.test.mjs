@@ -153,25 +153,10 @@ describe('Testes de Unidade - Módulo locaisService (RolêApp)', () => {
     assert.equal(validatePrecoEntrada(15.5), true);
   });
 
-  test('TU09 - createLocal: insere o registro e retorna o objeto criado', async () => {
-    const novoLocalInput = {
-      nome: 'Museu de Arte',
-      endereco: 'Praça das Artes, 50',
-      preco_entrada: 12.0,
-    };
-
-    const localCriadoMock = { id_local: 99, ...novoLocalInput };
-
-    supabase.from = () => ({
-      insert: () => ({
-        select: async () => ({ data: [localCriadoMock], error: null }),
-      }),
-    });
-
-    const resultado = await locaisService.createLocal(novoLocalInput);
-    assert.equal(resultado.id_local, 99);
-    assert.equal(resultado.nome, 'Museu de Arte');
-  });
+  test('TU09 - createLocal direto exige painel administrativo sem escrever', async () => {
+  supabase.from=()=>{throw Error('Escrita indevida');};
+  await assert.rejects(locaisService.createLocal({nome:'Novo local'}), /Painel Administrativo/);
+});
 
   test('TU10 - updateLocal: altera dados do local e retorna o registro atualizado', async () => {
     const dadosAtualizados = { nome: 'Novo Bistrô Centro' };
@@ -189,32 +174,16 @@ describe('Testes de Unidade - Módulo locaisService (RolêApp)', () => {
     assert.equal(resultado.nome, 'Novo Bistrô Centro');
   });
 
-  test('TU11 - deleteLocal: remove o local com sucesso e retorna boolean true', async () => {
-    supabase.from = () => ({
-      delete: () => ({
-        eq: async () => ({ error: null }),
-      }),
-    });
+  test('TU11 - deleteLocal direto fica bloqueado sem escrita', async () => {
+  supabase.from=()=>{throw Error('Escrita indevida');};
+  await assert.rejects(locaisService.deleteLocal(1), /auditado/);
+});
 
-    const deletado = await locaisService.deleteLocal(1);
-    assert.equal(deletado, true);
-  });
-
-  test('TU12 - deleteLocal: lança erro caso a exclusão falhe no banco de dados', async () => {
-    supabase.from = () => ({
-      delete: () => ({
-        eq: async () => ({ error: { message: 'Violação de chave estrangeira.' } }),
-      }),
-    });
-
-    await assert.rejects(
-      async () => await locaisService.deleteLocal(999),
-      {
-        name: 'Error',
-        message: 'Violação de chave estrangeira.',
-      }
-    );
-  });
+  test('TU12 - updateLocal rejeita assumir propriedade de terceiro', async () => {
+  let updated=false;supabase.from=()=>({update:()=>{updated=true;}});
+  await assert.rejects(locaisService.updateLocal(999,{id_proprietario:'forjado'}));
+  assert.equal(updated,false);
+});
 
   test('TU13 - Formatação de Preço: identifica locais com entrada gratuita', () => {
     const formatPrecoEntrada = (preco) => {

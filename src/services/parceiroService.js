@@ -8,6 +8,8 @@ export const parceiroService = {
   // Cadastro retorna uma solicitacao pendente; nunca cria local ou concede acesso.
   enviarSolicitacaoParceria: accessService.enviarSolicitacaoParceria,
   cadastrarNovoParceiro: accessService.enviarSolicitacaoParceria,
+  listarMinhasSolicitacoes: accessService.listarMinhasSolicitacoes,
+  listarMeusLocais: accessService.listarMeusLocais,
 
   /**
    * Busca os estabelecimentos vinculados ao parceiro

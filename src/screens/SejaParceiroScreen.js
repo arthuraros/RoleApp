@@ -93,10 +93,12 @@ export function SejaParceiroScreen({ navigation }) {
   const [formY, setFormY] = useState(0);
   const [expandedFaqs, setExpandedFaqs] = useState({});
 
-  const [nome, setNome] = useState(user?.nome || user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [estabelecimento, setEstabelecimento] = useState('');
-  const [cidadeEstado, setCidadeEstado] = useState('');
+  
+const [nome, setNome] = useState(user?.nome || user?.name || '');
+const [email, setEmail] = useState(user?.email || '');
+const [telefone, setTelefone] = useState('');
+const [estabelecimento, setEstabelecimento] = useState('');
+const [cidadeEstado, setCidadeEstado] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleScrollToForm = () => {
@@ -117,16 +119,27 @@ export function SejaParceiroScreen({ navigation }) {
       Alert.alert('Campos obrigatórios', 'Por favor, preencha todos os campos do formulário.');
       return;
     }
+const telefoneLimpo = telefone.replace(/\D/g, '');
 
+if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+  Alert.alert(
+    'Telefone inválido',
+    'Informe um telefone com DDD.'
+  );
+  return;
+}
     setLoading(true);
-    try {
-      await parceiroService.enviarSolicitacaoParceria({
-        idUsuario: user?.id_usuario || user?.id || null,
-        nome: nome.trim(),
-        email: email.trim(),
-        estabelecimento: estabelecimento.trim(),
-        cidadeEstado: cidadeEstado.trim(),
-      });
+    
+try {
+  await parceiroService.enviarSolicitacaoParceria({
+    idUsuario: user?.id_usuario || user?.id || null,
+    nome: nome.trim(),
+    email: email.trim(),
+    telefone: telefone.replace(/\D/g, ''),
+    estabelecimento: estabelecimento.trim(),
+    cidadeEstado: cidadeEstado.trim(),
+  });
+
 
       Alert.alert(
         'Solicitação enviada!',
@@ -362,6 +375,19 @@ export function SejaParceiroScreen({ navigation }) {
                 onChangeText={setEmail}
               />
             </View>
+
+            <View style={styles.inputGroup}>
+  <Text style={styles.inputLabel}>Telefone / WhatsApp</Text>
+  <TextInput
+    style={styles.input}
+    placeholder="(61) 99999-9999"
+    placeholderTextColor="#8E8E93"
+    keyboardType="phone-pad"
+    value={telefone}
+    onChangeText={setTelefone}
+    maxLength={16}
+  />
+</View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Nome do estabelecimento</Text>

@@ -21,7 +21,15 @@ import { supabase } from '../services/supabase.js';
 const MAX_FILE_SIZE_MB = 5;
 
 export function PerfilScreen({ navigation }) {
-  const { user, logout, updateUserAvatar, isAdmin, refreshProfile, profileError } = useAuth();
+ const {
+  user,
+  logout,
+  updateUserAvatar,
+  isAdmin,
+  isPartner,
+  refreshProfile,
+  profileError,
+} = useAuth();
   
   const [avatarUri, setAvatarUri] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
@@ -214,6 +222,45 @@ export function PerfilScreen({ navigation }) {
             </View>
 
             <View style={styles.menuList}>
+
+<TouchableOpacity
+  style={styles.meusLugaresButton}
+  activeOpacity={0.8}
+  onPress={() => {
+    if (isPartner) {
+      navigation.navigate('MeusLugares');
+    } else {
+      navigation.navigate('SejaParceiro');
+    }
+  }}
+>
+  <View style={styles.meusLugaresIcon}>
+    <Ionicons
+      name="storefront-outline"
+      size={24}
+      color="#FFFFFF"
+    />
+  </View>
+
+  <View style={{ flex: 1 }}>
+    <Text style={styles.meusLugaresTitle}>
+      Meus Lugares
+    </Text>
+
+    <Text style={styles.meusLugaresSubtitle}>
+      {isPartner
+        ? 'Gerencie seus estabelecimentos'
+        : 'Torne-se parceiro do RolêApp'}
+    </Text>
+  </View>
+
+  <Ionicons
+    name="chevron-forward"
+    size={22}
+    color="#FFFFFF"
+  />
+</TouchableOpacity>
+
               {isAdmin && <TouchableOpacity style={styles.menuItem}
                 onPress={() => navigation.navigate('PainelAdmin')}>
                 <Text style={styles.menuText}>Painel Administrativo</Text>
@@ -319,4 +366,38 @@ const styles = StyleSheet.create({
   menuText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   logoutButton: { backgroundColor: '#DC2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   logoutText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+
+
+meusLugaresButton: {
+  backgroundColor: '#4F159B',
+  borderRadius: 16,
+  padding: 16,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+  marginBottom: 8,
+  elevation: 3,
+},
+
+meusLugaresIcon: {
+  width: 46,
+  height: 46,
+  borderRadius: 12,
+  backgroundColor: '#7131C3',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+meusLugaresTitle: {
+  fontSize: 16,
+  fontWeight: '800',
+  color: '#FFFFFF',
+},
+
+meusLugaresSubtitle: {
+  fontSize: 12,
+  color: '#E9DCFF',
+  marginTop: 3,
+},
+
 });

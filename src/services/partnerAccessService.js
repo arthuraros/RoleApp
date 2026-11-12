@@ -1,11 +1,11 @@
 // Operações compatíveis com 20261109000200_partner_access_hardening.sql.
 // Cliente injetado: os testes não inicializam Supabase/Auth/Storage nem usam rede.
-import { validateDecision } from '../utils/partnership.js';
+import { validateDecision, partnershipRequestPayload } from '../utils/partnership.js';
 export function createPartnerAccessService(client) {
-  async function currentUserId() {
+  async function currentUserId(expectedUserId) {
     try {
       const { data, error } = await client.auth.getUser();
-      if (error || !data?.user?.id) throw error;
+      if (error || !data?.user?.id || (expectedUserId && data.user.id !== expectedUserId)) throw error;
       return data.user.id;
     } catch { throw new Error('Entre na sua conta para continuar.'); }
   }
@@ -21,16 +21,37 @@ export function createPartnerAccessService(client) {
   }
 
   return {
-    async enviarSolicitacaoParceria({ nome, email, estabelecimento, cidadeEstado }) {
-      const idUsuario = await currentUserId();
-      const fields = [nome, email, estabelecimento, cidadeEstado];
-      if (fields.some(value => typeof value !== 'string' || !value.trim())) {
-        throw new Error('Preencha todos os campos da solicitação.');
-      }
+    async listarMinhasSolicitacoes({ expectedUserId } = {}) {
+      const userId = await currentUserId(expectedUserId);
+      try {
+        const { data, error } = await client.from('solicitacoes_parceria')
+          .select('id_solicitacao,id_usuario,estabelecimento,cidade_estado,status,created_at')
+          .eq('id_usuario', userId).order('created_at', { ascending: false });
+        if (error || (data != null && !Array.isArray(data)) ||
+          data?.some(row => row.id_usuario !== userId)) throw error;
+        return data || [];
+      } catch { throw new Error('Não foi possível consultar suas solicitações. Tente novamente.'); }
+    },
+
+    async listarMeusLocais({ expectedUserId } = {}) {
+      const userId = await currentUserId(expectedUserId);
+      try {
+        const { data, error } = await client.from('locais')
+          .select('id_local,id_proprietario,nome,cidade_uf,visivel,created_at')
+          .eq('id_proprietario', userId).order('created_at', { ascending: false });
+        if (error || (data != null && !Array.isArray(data)) ||
+          data?.some(row => row.id_proprietario !== userId)) throw error;
+        // Propriedade serve para consulta; nao concede gestao nem prova aprovacao individual.
+        return data || [];
+      } catch { throw new Error('Não foi possível consultar seus estabelecimentos. Tente novamente.'); }
+    },
+
+    async enviarSolicitacaoParceria(input) {
+      const idUsuario = await currentUserId(input?.expectedUserId);
+      const fields = partnershipRequestPayload(input);
       const { data, error } = await client.from('solicitacoes_parceria').insert({
         id_usuario: idUsuario,
-        nome: nome.trim(), email: email.trim(), estabelecimento: estabelecimento.trim(),
-        cidade_estado: cidadeEstado.trim(), status: 'pendente',
+        ...fields, status: 'pendente',
       }).select().single();
       if (error) throw new Error('Não foi possível enviar sua solicitação de parceria.');
       return data;

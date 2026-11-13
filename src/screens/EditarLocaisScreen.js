@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
+import { LocalizacaoEstabelecimento } from '../components/LocalizacaoEstabelecimento';
 
 const DEFAULT_HOURS = [
   { day: 'Seg', open: '08:00', close: '18:00', active: true, dia_semana: 1 },
@@ -36,6 +37,9 @@ export function EditarLocaisScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  const loadRequest = useRef(0);
+  const [savingLocation, setSavingLocation] = useState(false);
+
   // Form states
   const [nomeLocal, setNomeLocal] = useState('');
   const [descricao, setDescricao] = useState('');
@@ -53,26 +57,35 @@ export function EditarLocaisScreen({ navigation, route }) {
 
   // Carrega lista de locais do parceiro
   const loadLocais = useCallback(async () => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setCurrentLocal(null);
     try {
       const data = await parceiroService.getLocaisDoParceiro(userId);
+      if (request !== loadRequest.current) return;
       setLocaisList(data || []);
-      const initial = route?.params?.local || data?.[0] || null;
+      const initial = data?.find(item => String(item.id_local) === String(route?.params?.local?.id_local)) || data?.[0] || null;
       if (initial) {
-        loadLocalData(initial.id_local);
+        await loadLocalData(initial.id_local);
       } else {
         setLoading(false);
       }
     } catch (err) {
+      if (request !== loadRequest.current) return;
       console.warn('Erro ao buscar locais:', err);
+      Alert.alert('Erro ao buscar locais', err.message);
       setLoading(false);
     }
   }, [userId, route?.params?.local]);
 
   // Carrega detalhes completos do local selecionado
   const loadLocalData = async (idLocal) => {
+    const request = ++loadRequest.current;
+    setCurrentLocal(null);
     try {
       setLoading(true);
       const detalhes = await parceiroService.getLocalComDetalhes(idLocal);
+      if (request !== loadRequest.current) return;
       if (detalhes) {
         setCurrentLocal(detalhes);
         setNomeLocal(detalhes.nome || '');
@@ -107,18 +120,19 @@ export function EditarLocaisScreen({ navigation, route }) {
         setEvents(detalhes.eventos || []);
       }
     } catch (err) {
-      console.warn('Erro ao carregar detalhes do local:', err);
+      if (request === loadRequest.current) Alert.alert('Erro ao carregar local', err.message);
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadLocais();
+    return () => { loadRequest.current += 1; };
   }, [loadLocais]);
 
   const handleSelectPlace = (place) => {
-    loadLocalData(place.id_local);
+    if (!saving && !savingLocation) loadLocalData(place.id_local);
   };
 
   const handleToggleDay = (index) => {
@@ -148,17 +162,45 @@ export function EditarLocaisScreen({ navigation, route }) {
     Alert.alert('Sucesso', 'Horários replicados para todos os dias abertos.');
   };
 
+
   const handleRemoveEvent = async (idEvento) => {
     try {
       await parceiroService.removerEvento(idEvento);
-      setEvents((prev) => prev.filter((ev) => ev.id_evento !== idEvento && ev.id !== idEvento));
+
+      setEvents((prev) =>
+        prev.filter(
+          (ev) =>
+            ev.id_evento !== idEvento &&
+            ev.id !== idEvento
+        )
+      );
     } catch (err) {
       console.error('Erro ao excluir evento:', err);
       Alert.alert('Erro', 'Não foi possível remover o evento.');
     }
   };
 
+  // Salvar a localização do estabelecimento no Supabase
+  const handleSaveLocation = async (latitude, longitude) => {
+    if (!currentLocal?.id_local) {
+      throw new Error('Nenhum estabelecimento selecionado.');
+    }
+
+    const idLocal = currentLocal.id_local;
+    setSavingLocation(true);
+    try {
+      const resultado = await parceiroService.atualizarCoordenadasLocal(idLocal, latitude, longitude);
+      const atualizar = item => String(item?.id_local) === String(idLocal)
+        ? { ...item, latitude: resultado.latitude, longitude: resultado.longitude } : item;
+      setCurrentLocal(atualizar);
+      setLocaisList(lista => lista.map(atualizar));
+    } finally {
+      setSavingLocation(false);
+    }
+  };
+
   const handleSave = async () => {
+    if (loading || saving || savingLocation) return;
     if (!currentLocal?.id_local) {
       Alert.alert('Atenção', 'Nenhum local selecionado para salvar.');
       return;
@@ -197,6 +239,13 @@ export function EditarLocaisScreen({ navigation, route }) {
       { text: 'Descartar', style: 'destructive', onPress: () => navigation?.goBack() },
     ]);
   };
+
+  if (loading || !currentLocal) {
+    return <SafeAreaView style={styles.container}>
+      {loading ? <ActivityIndicator /> : <Text>Nenhum estabelecimento disponível. Volte e tente novamente.</Text>}
+      <TouchableOpacity onPress={() => navigation?.goBack()}><Text>Voltar</Text></TouchableOpacity>
+    </SafeAreaView>;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -401,23 +450,16 @@ export function EditarLocaisScreen({ navigation, route }) {
               </View>
             </View>
 
-            {/* Mini Map Card */}
-            <View style={styles.miniMapCard}>
-              {/* Map abstract graphics */}
-              <View style={styles.mapRoadH} />
-              <View style={styles.mapRoadV} />
-              <View style={styles.mapRoadCurve} />
-
-              <View style={styles.mapPinContainer}>
-                <Ionicons name="location" size={32} color="#C1121F" />
-              </View>
-
-              <View style={styles.mapAddressPill}>
-                <Text style={styles.mapAddressPillText} numberOfLines={1}>
-                  {endereco || 'Rua das Flores, 123 - Centro'}
-                </Text>
-              </View>
-            </View>
+            {/* Mapa interativo do estabelecimento */}
+            <LocalizacaoEstabelecimento
+              key={currentLocal?.id_local}
+              local={currentLocal}
+              endereco={endereco}
+              bairro={bairro}
+              cidadeUf={cidadeUf}
+              onSalvar={handleSaveLocation}
+              disabled={saving}
+            />
           </View>
 
           {/* Section: Horários de funcionamento */}
@@ -528,7 +570,7 @@ export function EditarLocaisScreen({ navigation, route }) {
               style={[styles.publishButton, saving && { opacity: 0.7 }]}
               onPress={handleSave}
               activeOpacity={0.85}
-              disabled={saving}
+              disabled={saving || savingLocation}
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
@@ -541,6 +583,7 @@ export function EditarLocaisScreen({ navigation, route }) {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+
 }
 
 const styles = StyleSheet.create({

@@ -424,7 +424,7 @@ function generateLeafletHtml(locais, destaqueIds, initialFilters, initialPontoRe
       var count = 0;
 
       allLocais.forEach(function(l) {
-        if (!l.latitude || !l.longitude) return;
+        if (l.latitude == null || l.longitude == null) return;
         var lat = parseFloat(l.latitude);
         var lng = parseFloat(l.longitude);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -713,7 +713,7 @@ export function MapaScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      carregarFavoritos();
+      carregarDados();
       const timer = setTimeout(() => {
         webViewRef.current?.injectJavaScript(
           'if (window.invalidateMap) { window.invalidateMap(); } true;'
@@ -721,7 +721,7 @@ export function MapaScreen({ navigation }) {
       }, 150);
 
       return () => clearTimeout(timer);
-    }, [carregarFavoritos])
+    }, [carregarDados])
   );
 
   const handleToggleFavoritos = () => {

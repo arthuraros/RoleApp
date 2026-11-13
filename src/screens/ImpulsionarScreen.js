@@ -42,10 +42,8 @@ export function ImpulsionarScreen({ navigation, route }) {
   const [selectedLocal, setSelectedLocal] = useState(route?.params?.local || null);
 
   // Highlight inputs
-  const [titulo, setTitulo] = useState('Combo estudante por R$ 9,90');
-  const [mensagem, setMensagem] = useState(
-    'Salgado + suco natural de segunda a quinta, com carteirinha.'
-  );
+  const [titulo, setTitulo] = useState();
+  const [mensagem, setMensagem] = useState();
 
   // Audience & filters
   const [selectedInterests, setSelectedInterests] = useState([
@@ -97,9 +95,14 @@ export function ImpulsionarScreen({ navigation, route }) {
     );
   };
 
-  const durations = offers.filter(offer => offer.tipo === mode && [3, 7, 14].includes(Number(offer.duracao_dias)))
-    .map(offer => ({ days: Number(offer.duracao_dias), label: `${offer.duracao_dias} dias`,
-      total: Number(offer.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }));
+  const durations = offers.filter(offer => /*offer.tipo === mode &&*/ [3, 7, 14].includes(Number(offer.duracao_dias)))
+    .map(offer => ({
+      days: Number(offer.duracao_dias), label: `${offer.duracao_dias} dias`,
+      per_day: (Number(offer.valor_total) / Number(offer.duracao_dias)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+      total: Number(offer.valor_total).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+      views: offer.views,
+      publico: offer.publico,
+    }));
   const currentDurationInfo = durations.find(d => d.days === selectedDuration) || durations[0];
 
   const handleAction = async () => {
@@ -108,6 +111,14 @@ export function ImpulsionarScreen({ navigation, route }) {
     }
     if (!selectedLocal?.id_local) {
       Alert.alert('Atenção', 'Selecione um estabelecimento.');
+      return;
+    }
+
+    if (selectedLocal.visivel === false) {
+      Alert.alert(
+        'Local oculto',
+        'Este local não está visível no aplicativo. Torne o local visível antes de solicitar um impulsionamento.'
+      );
       return;
     }
 
@@ -143,6 +154,18 @@ export function ImpulsionarScreen({ navigation, route }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const formatNumber = (value) => {
+    if (value == null || value === "") return "A confirmar";
+
+    const number = Number(value);
+
+    if (isNaN(number)) return value;
+
+    const formatted = number.toLocaleString("pt-BR");
+
+    return number >= 1000 ? `~${formatted}` : `~${formatted}`;
   };
 
   return (
@@ -231,6 +254,15 @@ export function ImpulsionarScreen({ navigation, route }) {
                 </TouchableOpacity>
               )}
             </View>
+
+            {selectedLocal && selectedLocal.visivel === false && (
+              <View style={styles.warningBanner}>
+                <Ionicons name="alert-circle-outline" size={20} color="#DC2626" style={{ marginRight: 8 }} />
+                <Text style={styles.warningBannerText}>
+                  Este local está oculto no app e não pode receber impulsionamento até que seja ativado.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Section: Seu destaque (Only for mode === 'destaque') */}
@@ -248,7 +280,7 @@ export function ImpulsionarScreen({ navigation, route }) {
                   style={styles.textInput}
                   value={titulo}
                   onChangeText={setTitulo}
-                  placeholder="Título do destaque"
+                  placeholder='Combo estudante por R$ 9,90'
                   placeholderTextColor="#9CA3AF"
                 />
               </View>
@@ -260,7 +292,7 @@ export function ImpulsionarScreen({ navigation, route }) {
                   style={[styles.textInput, styles.textArea]}
                   value={mensagem}
                   onChangeText={setMensagem}
-                  placeholder="Mensagem promocional..."
+                  placeholder='Salgado + suco natural de segunda a quinta, com carteirinha.'
                   placeholderTextColor="#9CA3AF"
                   multiline
                 />
@@ -269,7 +301,7 @@ export function ImpulsionarScreen({ navigation, route }) {
               {/* Live Preview Card */}
               <View style={styles.previewCard}>
                 <View style={styles.previewTopRow}>
-                  <Text style={styles.previewTag}>PRÉVIA NO APP · CONSOLAÇÃO</Text>
+                  <Text style={styles.previewTag}>PRÉVIA NO APP</Text>
                   <View style={styles.previewBadge}>
                     <Text style={styles.previewBadgeText}>Destaque</Text>
                   </View>
@@ -361,8 +393,8 @@ export function ImpulsionarScreen({ navigation, route }) {
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionHeading}>Orçamento e duração</Text>
             <View style={styles.costRow}>
-              <Text style={styles.costLabel}>Orçamento confirmado</Text>
-              <Text style={styles.costValue}>{currentDurationInfo?.total || 'Indisponível'}</Text>
+              <Text style={styles.costLabel}>Por dia</Text>
+              <Text style={styles.costValue}>{currentDurationInfo?.per_day || 'Indisponível'}</Text>
             </View>
 
             {/* Duration Pills */}
@@ -396,12 +428,12 @@ export function ImpulsionarScreen({ navigation, route }) {
             <View style={styles.calculationCard}>
               <View style={styles.calcMetricsRow}>
                 <View style={styles.calcMetricCol}>
-                  <Text style={styles.calcNumber}>A confirmar</Text>
+                  <Text style={styles.calcNumber}>{formatNumber(currentDurationInfo?.publico)}</Text>
                   <Text style={styles.calcLabel}>pessoas no público</Text>
                 </View>
 
                 <View style={styles.calcMetricCol}>
-                  <Text style={styles.calcNumber}>A confirmar</Text>
+                  <Text style={styles.calcNumber}>{formatNumber(currentDurationInfo?.views)}</Text>
                   <Text style={styles.calcLabel}>visualizações estimadas</Text>
                 </View>
               </View>
@@ -420,16 +452,19 @@ export function ImpulsionarScreen({ navigation, route }) {
 
             {/* CTA Button */}
             <TouchableOpacity
-              style={[styles.actionButton, submitting && { opacity: 0.7 }]}
+              style={[
+                styles.actionButton,
+                (submitting || selectedLocal?.visivel === false) && { opacity: 0.6, backgroundColor: '#9CA3AF' }
+              ]}
               onPress={handleAction}
               activeOpacity={0.85}
-              disabled={submitting || !currentDurationInfo}
+              disabled={submitting || !currentDurationInfo || selectedLocal?.visivel === false}
             >
               {submitting ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <Text style={styles.actionButtonText}>
-                  Solicitar campanha
+                  {selectedLocal?.visivel === false ? 'Local indisponível para campanha' : 'Solicitar campanha'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -816,6 +851,22 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEE2E2',
+    borderColor: '#F87171',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  warningBannerText: {
+    flex: 1,
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
 

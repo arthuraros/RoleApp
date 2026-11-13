@@ -7,6 +7,8 @@ import {
   ScrollView,
   Image,
   Alert,
+  Modal,
+  TextInput,
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,6 +37,11 @@ export function PerfilScreen({ navigation }) {
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [reviewsCount, setReviewsCount] = useState(null); // Estado para guardar a quantidade de avaliações
+  const [saldo, setSaldo] = useState(0);
+  const [modalSaldoVisible, setModalSaldoVisible] = useState(false);
+  const [tipoOperacao, setTipoOperacao] = useState('adicionar');
+  const [inputValorSaldo, setInputValorSaldo] = useState('');
+  const [saldoVisivel, setSaldoVisivel] = useState(true);
 
   const userId = user?.id_usuario || user?.id;
 
@@ -44,10 +51,14 @@ export function PerfilScreen({ navigation }) {
     setAvatarUri(null);
     setReviewsCount(null);
     setAccountError(false);
+    setSaldo(0);
+    setModalSaldoVisible(false);
+    setInputValorSaldo('');
     if (userId) {
       profileService.getEditableProfile().then(data => {
         if (!active) return;
         setAccountProfile(data);
+        setSaldo(Number(data?.saldo ?? 0));
         const photoUrl = data?.foto_url;
         setAvatarUri(photoUrl ? `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : null);
         setImageError(false);
@@ -58,6 +69,59 @@ export function PerfilScreen({ navigation }) {
     }
     return () => { active = false; };
   }, [userId]));
+
+  // Função para alterar o saldo (aumentar ou diminuir)
+  const handleAlterarSaldo = async (valorDelta) => {
+    if (!userId) return;
+
+    const novoSaldo = Math.max(0, saldo + valorDelta); // Evita saldo negativo
+
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({ saldo: novoSaldo })
+        .eq('id_usuario', userId);
+
+      if (error) throw error;
+
+      setSaldo(novoSaldo);
+    } catch (err) {
+      console.error('Erro ao atualizar saldo:', err);
+      Alert.alert('Erro', 'Não foi possível atualizar o saldo.');
+    }
+  };
+
+  const confirmarAlteracaoSaldo = async () => {
+    if (!userId) return;
+
+    const valorNumerico = parseFloat(inputValorSaldo.replace(',', '.'));
+    if (isNaN(valorNumerico) || valorNumerico <= 0) {
+      Alert.alert('Atenção', 'Informe um valor numérico válido maior que zero.');
+      return;
+    }
+
+    const delta = tipoOperacao === 'adicionar' ? valorNumerico : -valorNumerico;
+    
+    const novoSaldo = saldo + delta;
+
+    try {
+      const { error } = await supabase
+        .from('usuarios')
+        .update({ saldo: novoSaldo })
+        .eq('id_usuario', userId);
+
+      if (error) throw error;
+
+      setSaldo(novoSaldo);
+      setModalSaldoVisible(false);
+      setInputValorSaldo('');
+      Alert.alert('Sucesso', 'Saldo atualizado com sucesso!');
+    } catch (err) {
+      console.error('Erro ao atualizar saldo:', err);
+      Alert.alert('Erro', 'Não foi possível atualizar o saldo.');
+    }
+  };
+
 
   const handleSelectAvatar = () => {
     Alert.alert(
@@ -185,7 +249,7 @@ export function PerfilScreen({ navigation }) {
 
           <View style={styles.contentCard}>
             <View style={styles.topCardsRow}>
-              <TouchableOpacity style={[styles.card, styles.wishlistCard, { width: '100%' }]} onPress={() => navigation.navigate('Favoritos')}>
+              <TouchableOpacity style={[styles.card, styles.wishlistCard]} onPress={() => navigation.navigate('Favoritos')}>
                 <Image
                   source={require('../../assets/bookmark_symbol.png')}
                   style={styles.cardIcon}
@@ -193,6 +257,58 @@ export function PerfilScreen({ navigation }) {
                 />
                 <Text style={styles.wishlistLabel}>Rolês que quero visitar</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.card, styles.visitedCard]} onPress={() => navigation.navigate('RolesScreen')}>
+                <Ionicons name="map-outline" size={26} color="#4F159B" />
+                <Text style={styles.cardLabel}>Meus rolês</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Card de Saldo Interativo */}
+            <View style={styles.saldoCardContainer}>
+              <View>
+                <View style={styles.saldoHeaderRow}>
+                  <Text style={styles.saldoLabel}>Seu Saldo</Text>
+                  <TouchableOpacity 
+                    onPress={() => setSaldoVisivel(!saldoVisivel)} 
+                    style={styles.eyeButton}
+                  >
+                    <Feather 
+                      name={saldoVisivel ? "eye" : "eye-off"} 
+                      size={16} 
+                      color="#64748B" 
+                    />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.saldoValue}>
+                  {saldoVisivel ? `R$ ${saldo.toFixed(2).replace('.', ',')}` : 'R$ ••••••'}
+                </Text>
+              </View>
+
+              <View style={styles.saldoAcoesRow}>
+                <TouchableOpacity 
+                  style={[styles.saldoActionBtn, { backgroundColor: '#EF4444' }]} 
+                  onPress={() => {
+                    setTipoOperacao('remover');
+                    setInputValorSaldo('');
+                    setModalSaldoVisible(true);
+                  }}
+                >
+                  <Feather name="minus" size={16} color="#FFFFFF" />
+                  <Text style={styles.saldoActionBtnText}>Remover</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.saldoActionBtn, { backgroundColor: '#10B981' }]} 
+                  onPress={() => {
+                    setTipoOperacao('adicionar');
+                    setInputValorSaldo('');
+                    setModalSaldoVisible(true);
+                  }}
+                >
+                  <Feather name="plus" size={16} color="#FFFFFF" />
+                  <Text style={styles.saldoActionBtnText}>Adicionar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.actionsRow}>
@@ -276,6 +392,47 @@ export function PerfilScreen({ navigation }) {
               <Text style={styles.logoutText}>Sair</Text>
             </TouchableOpacity>
           </View>
+
+          <Modal visible={modalSaldoVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {tipoOperacao === 'adicionar' ? 'Adicionar Saldo' : 'Remover Saldo'}
+            </Text>
+            <Text style={styles.sectionSubTitle}>Digite o valor em R$:</Text>
+
+            <TextInput
+              style={styles.inputSaldoModal}
+              placeholder="Ex: 50.00"
+              placeholderTextColor="#94A3B8"
+              keyboardType="numeric"
+              value={inputValorSaldo}
+              onChangeText={setInputValorSaldo}
+              autoFocus={true}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.cancelBtn]} 
+                onPress={() => setModalSaldoVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.modalBtn, 
+                  styles.saveBtn, 
+                  { backgroundColor: tipoOperacao === 'adicionar' ? '#10B981' : '#EF4444' }
+                ]} 
+                onPress={confirmarAlteracaoSaldo}
+              >
+                <Text style={styles.saveBtnText}>Confirmar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <View style={{height:100}}></View>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -376,4 +533,111 @@ meusLugaresSubtitle: {
   marginTop: 3,
 },
 
+  saldoCardContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  saldoLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  saldoValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1E1B4B',
+    marginTop: 4,
+  },
+  saldoAcoesRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  saldoActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  saldoActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1E1B4B',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  sectionSubTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 8,
+  },
+  inputSaldoModal: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    marginBottom: 16,
+    color: '#1E293B',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelBtn: {
+    backgroundColor: '#F1F5F9',
+    marginRight: 8,
+  },
+  cancelBtnText: {
+    color: '#475569',
+    fontWeight: '600',
+  },
+  saveBtn: {
+    marginLeft: 8,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  saldoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eyeButton: {
+    padding: 2,
+  },
 });

@@ -43,15 +43,16 @@ test('leitura de nome e avaliacoes filtra conta atual e rejeita dados de terceir
   const service = createProfileService({
     auth: { getUser: async () => ({ data: { user: { id: 'real' } } }) },
     from(table) { return { select(columns) {
-      assert.equal(columns, table === 'usuarios' ? 'id_usuario, nome, foto_url' : 'id_avaliacao, id_usuario, id_local, nota, comentario');
+      assert.equal(columns, table === 'usuarios' ? 'id_usuario, nome, foto_url, saldo' : 'id_avaliacao, id_usuario, id_local, nota, comentario');
       return { eq(key, id) {
         assert.equal(key, 'id_usuario'); assert.equal(id, 'real');
-        const row = { id_usuario: wrongAccount ? 'outra' : 'real', nome: 'Ana' };
+        const row = { id_usuario: wrongAccount ? 'outra' : 'real', nome: 'Ana', saldo: 32.5 };
         return { maybeSingle: async () => ({ data: row }), order: async () => ({ data: [row] }) };
       } };
     } }; },
   });
   assert.equal((await service.getEditableProfile()).nome, 'Ana');
+  assert.equal((await service.getEditableProfile()).saldo, 32.5);
   assert.equal((await service.getMyReviews()).length, 1);
   wrongAccount = true;
   await assert.rejects(service.getEditableProfile(), /carregar/);
@@ -80,7 +81,7 @@ function mockClient({ role = 'usuario', id = 'user-a', error = null, authError =
         return { eq(column, value) {
           assert.equal(value, id);
           assert.equal(column, table === 'usuarios' ? 'id_usuario' : 'user_id');
-          assert.equal(columns, table === 'usuarios' ? 'id_usuario, foto_url' : 'user_id, role');
+          assert.equal(columns, table === 'usuarios' ? 'id_usuario, foto_url, saldo' : 'user_id, role');
           return { maybeSingle: async () => ({ error, data: table === 'usuarios'
             ? { id_usuario: returnedId, foto_url: 'avatar.png' }
             : role === null ? null : { user_id: returnedId, role },

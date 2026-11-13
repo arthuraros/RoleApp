@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,649 +11,1228 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { roleService } from '../services/roleService';
+import { supabase } from '../services/supabase';
 
 export function RoleDetalhesScreen({ route, navigation }) {
-  const { roleId, roleItem: initialRoleItem } = route.params || {};
-  const [role, setRole] = useState(initialRoleItem || null);
-  const [loading, setLoading] = useState(!initialRoleItem);
+  const { userId, roleId, roleItem } = route.params || {};
 
-  // Estados para o Modal de Finalização/Status
-  const [modalStatusVisible, setModalStatusVisible] = useState(false);
-  const [novoStatus, setNovoStatus] = useState('realizado');
-  const [tipoPreco, setTipoPreco] = useState('automatico'); // 'automatico' ou 'manual'
-  const [valorManual, setValorManual] = useState('');
-  const [salvandoStatus, setSalvandoStatus] = useState(false);
+  // Se possuir roleId, a tela estará no modo de edição.
+  const modoEdicao = !!roleId;
+
+  // Estados principais
+  const [nomeRole, setNomeRole] = useState('');
+  const [statusRole, setStatusRole] = useState('planejado');
+  const [etapasRascunho, setEtapasRascunho] = useState([]);
+
+  const [salvandoBanco, setSalvandoBanco] = useState(false);
+  const [carregandoRole, setCarregandoRole] = useState(false);
+
+  // Estados do modal
+  const [modalEtapaVisible, setModalEtapaVisible] = useState(false);
+  const [locaisDisponiveis, setLocaisDisponiveis] = useState([]);
+  const [buscaLocal, setBuscaLocal] = useState('');
+  const [localSelecionado, setLocalSelecionado] = useState(null);
+  const [cardapioLocal, setCardapioLocal] = useState([]);
+  const [loadingCardapio, setLoadingCardapio] = useState(false);
+  const [itensSelecionadosEtapa, setItensSelecionadosEtapa] = useState({});
+
+  // Custo total
+  const precoTotalRascunho = etapasRascunho.reduce(
+    (acc, curr) => acc + Number(curr.custoEtapaTotal || 0),
+    0
+  );
+
+  // ==========================================
+  // CARREGAR ROLÊ EXISTENTE
+  // ==========================================
+
+  const carregarRoleExistente = async () => {
+    if (!roleId || !userId) return;
+
+    try {
+      setCarregandoRole(true);
+
+      let role = roleItem;
+
+      // Se os dados das etapas não vieram pela navegação,
+      // busca novamente no banco.
+      if (!role || !Array.isArray(role.roles_etapas)) {
+        const rolesUsuario = await roleService.getRolesDoUsuario(userId);
+
+        role = rolesUsuario.find(
+          r => String(r.id_role) === String(roleId)
+        );
+      }
+
+      if (!role) {
+        throw new Error('Rolê não encontrado.');
+      }
+
+      setNomeRole(role.nome_role || '');
+      setStatusRole(role.status || 'planejado');
+
+      // Agrupa todas as linhas de roles_etapas por número de etapa.
+      const etapasAgrupadas = {};
+
+      (role.roles_etapas || []).forEach(linha => {
+        const numeroEtapa = linha.etapa;
+
+        if (!etapasAgrupadas[numeroEtapa]) {
+          etapasAgrupadas[numeroEtapa] = {
+            etapa: numeroEtapa,
+            id_local: linha.id_local,
+            locais: linha.locais || {
+              id_local: linha.id_local,
+              nome: 'Local não encontrado',
+              endereco: 'Endereço não informado',
+            },
+            itens: [],
+            custoEtapaTotal: 0,
+          };
+        }
+
+        // Registros sem item representam apenas visita.
+        if (linha.item_cardapio) {
+          const quantidade = Number(linha.quantidade_item || 1);
+          const custoTotal = Number(linha.custo_acao || 0);
+
+          etapasAgrupadas[numeroEtapa].itens.push({
+            nomeItem: linha.item_cardapio,
+            quantidade_item: quantidade,
+            precoUnitario:
+              quantidade > 0 ? custoTotal / quantidade : 0,
+          });
+
+          etapasAgrupadas[numeroEtapa].custoEtapaTotal += custoTotal;
+        }
+      });
+
+      const etapasCarregadas = Object.values(etapasAgrupadas)
+        .sort((a, b) => a.etapa - b.etapa);
+
+      setEtapasRascunho(etapasCarregadas);
+
+    } catch (error) {
+      console.error('Erro ao carregar rolê:', error);
+
+      Alert.alert(
+        'Erro',
+        'Não foi possível carregar os detalhes deste rolê.',
+        [{ text: 'Voltar', onPress: () => navigation.goBack() }]
+      );
+    } finally {
+      setCarregandoRole(false);
+    }
+  };
 
   useEffect(() => {
-    if (roleId) {
-      carregarDetalhesRole();
+    if (modoEdicao) {
+      carregarRoleExistente();
     }
-  }, [roleId]);
+  }, [roleId, userId]);
 
-  const carregarDetalhesRole = async () => {
+  // ==========================================
+  // CARREGAR LOCAIS
+  // ==========================================
+
+  const carregarLocaisParaBusca = async () => {
     try {
-      setLoading(true);
-      const rolesUsuario = await roleService.getRolesDoUsuario(role?.id_usuario);
-      const encontrado = rolesUsuario.find(r => r.id_role === roleId);
-      if (encontrado) {
-        setRole(encontrado);
-        setValorManual(String(encontrado.preco_final || '0'));
-      }
+      const { data, error } = await supabase
+        .from('locais')
+        .select('*')
+        .eq('visivel', true);
+
+      if (error) throw error;
+
+      setLocaisDisponiveis(data || []);
     } catch (err) {
-      console.error('Erro ao carregar detalhes:', err);
-      Alert.alert('Erro', 'Não foi possível carregar os detalhes do rolê.');
-    } finally {
-      setLoading(false);
+      console.error('Erro ao buscar locais:', err);
+      Alert.alert('Erro', 'Não foi possível carregar os locais.');
     }
   };
 
-  const abrirModalStatus = () => {
-    setNovoStatus(role.status || 'realizado');
-    setTipoPreco('automatico');
-    setValorManual(String(role.preco_final || '0'));
-    setModalStatusVisible(true);
+  const abrirModalAdicionarEtapa = () => {
+    setLocalSelecionado(null);
+    setCardapioLocal([]);
+    setItensSelecionadosEtapa({});
+    setBuscaLocal('');
+
+    setModalEtapaVisible(true);
+    carregarLocaisParaBusca();
   };
 
-  const salvarAlteracaoStatus = async () => {
+  // ==========================================
+  // SELECIONAR LOCAL E CARREGAR CARDÁPIO
+  // ==========================================
+
+  const selecionarLocalParaEtapa = async (local) => {
+    setLocalSelecionado(local);
+    setLoadingCardapio(true);
+    setItensSelecionadosEtapa({});
+    setCardapioLocal([]);
+
     try {
-      setSalvandoStatus(true);
+      const { data, error } = await supabase
+        .from('itens_cardapio')
+        .select('*')
+        .eq('id_local', local.id_local)
+        .eq('disponivel', true);
 
-      // Calcula o preço final com base na escolha do usuário
-      let precoFinalFinal = role.preco_final; // padrão automático
+      if (error) throw error;
 
-      if (tipoPreco === 'manual') {
-        const parsed = parseFloat(valorManual.replace(',', '.'));
-        if (isNaN(parsed) || parsed < 0) {
-          Alert.alert('Atenção', 'Informe um valor válido para o gasto real.');
-          setSalvandoStatus(false);
-          return;
-        }
-        precoFinalFinal = parsed;
-      }
-
-      await roleService.atualizarStatusEPrecoRole(
-        role.id_role,
-        role.id_usuario,
-        novoStatus,
-        precoFinalFinal
-      );
-
-      Alert.alert('Sucesso', 'Status e valores atualizados com sucesso!');
-      setModalStatusVisible(false);
-      carregarDetalhesRole();
+      setCardapioLocal(data || []);
     } catch (err) {
-      console.error('Erro ao atualizar status:', err);
-      Alert.alert('Erro', 'Não foi possível atualizar o rolê.');
+      console.error('Erro ao carregar cardápio:', err);
+      Alert.alert('Erro', 'Não foi possível carregar o cardápio.');
     } finally {
-      setSalvandoStatus(false);
+      setLoadingCardapio(false);
     }
   };
 
-  const obterEtapasAgrupadas = () => {
-    if (!role?.roles_etapas || role.roles_etapas.length === 0) return [];
-    const mapa = {};
+  // ==========================================
+  // QUANTIDADE DOS ITENS
+  // ==========================================
 
-    role.roles_etapas.forEach((item) => {
-      const numEtapa = item.etapa;
-      if (!mapa[numEtapa]) {
-        mapa[numEtapa] = {
-          etapa: numEtapa,
-          local: item.locais,
-          itensConsumo: [],
+  const alterarQtdItemEtapa = (itemCardap, delta) => {
+    setItensSelecionadosEtapa(prev => {
+      const atual = prev[itemCardap.nome]?.quantidade_item || 0;
+      const novaQtd = Math.max(0, atual + delta);
+
+      const copia = { ...prev };
+
+      if (novaQtd === 0) {
+        delete copia[itemCardap.nome];
+      } else {
+        copia[itemCardap.nome] = {
+          quantidade_item: novaQtd,
+          precoUnitario: Number(itemCardap.preco || 0),
         };
       }
 
-      if (item.item_cardapio) {
-        mapa[numEtapa].itensConsumo.push({
-          nome: item.item_cardapio,
-          quantidade: item.quantidade_item,
-          custo: item.custo_acao,
-        });
-      }
+      return copia;
     });
-
-    return Object.values(mapa).sort((a, b) => a.etapa - b.etapa);
   };
 
-  if (loading || !role) {
+  // ==========================================
+  // ADICIONAR ETAPA AO ROLÊ
+  // ==========================================
+
+  const adicionarEtapaAoRascunho = () => {
+    if (!localSelecionado) {
+      Alert.alert('Atenção', 'Selecione um local para esta etapa.');
+      return;
+    }
+
+    const itensArray = Object.entries(itensSelecionadosEtapa).map(
+      ([nomeItem, dados]) => ({
+        nomeItem,
+        quantidade_item: dados.quantidade_item,
+        precoUnitario: dados.precoUnitario,
+      })
+    );
+
+    const proximoNumeroEtapa =
+      etapasRascunho.length > 0
+        ? Math.max(...etapasRascunho.map(e => e.etapa)) + 1
+        : 1;
+
+    const custoEtapa = itensArray.reduce(
+      (total, item) =>
+        total + item.precoUnitario * item.quantidade_item,
+      0
+    );
+
+    const novaEtapa = {
+      etapa: proximoNumeroEtapa,
+      id_local: localSelecionado.id_local,
+      locais: localSelecionado,
+      itens: itensArray,
+      custoEtapaTotal: custoEtapa,
+    };
+
+    setEtapasRascunho(prev => [...prev, novaEtapa]);
+    setModalEtapaVisible(false);
+  };
+
+  // ==========================================
+  // REMOVER ETAPA
+  // ==========================================
+
+  const removerEtapaRascunho = (indexEtapa) => {
+    Alert.alert(
+      'Remover etapa',
+      'Deseja realmente remover esta etapa do rolê?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            setEtapasRascunho(prev => {
+              const novasEtapas = prev.filter(
+                (_, idx) => idx !== indexEtapa
+              );
+
+              return novasEtapas.map((etapa, idx) => ({
+                ...etapa,
+                etapa: idx + 1,
+              }));
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  // ==========================================
+  // SALVAR OU ATUALIZAR ROLÊ
+  // ==========================================
+
+  const salvarRolpesDefinitivoNoBanco = async () => {
+    if (!userId) {
+      Alert.alert('Erro', 'Usuário não identificado.');
+      return;
+    }
+
+    if (!nomeRole.trim()) {
+      Alert.alert('Atenção', 'Dê um nome para o seu rolê.');
+      return;
+    }
+
+    if (etapasRascunho.length === 0) {
+      Alert.alert(
+        'Atenção',
+        'Adicione pelo menos uma etapa/local ao rolê.'
+      );
+      return;
+    }
+
+    try {
+      setSalvandoBanco(true);
+
+      const etapasFormatadas = etapasRascunho.map(e => ({
+        id_local: e.id_local,
+        etapa: e.etapa,
+        itens: e.itens || [],
+      }));
+
+      if (modoEdicao) {
+        // Atualiza o rolê que já existe.
+        await roleService.atualizarRoleCompleto(
+          roleId,
+          userId,
+          nomeRole.trim(),
+          etapasFormatadas
+        );
+
+        Alert.alert(
+          'Sucesso',
+          'Rolê atualizado com sucesso!',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      } else {
+        // Cria um novo rolê.
+        await roleService.criarRoleCompletoComEtapas(
+          userId,
+          nomeRole.trim(),
+          etapasFormatadas
+        );
+
+        Alert.alert(
+          'Sucesso',
+          'Rolê criado e salvo com sucesso!',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.goBack(),
+            },
+          ]
+        );
+      }
+    } catch (err) {
+      console.error('Erro ao salvar rolê:', err);
+
+      Alert.alert(
+        'Erro',
+        modoEdicao
+          ? 'Não foi possível atualizar o rolê.'
+          : 'Não foi possível salvar o rolê.'
+      );
+    } finally {
+      setSalvandoBanco(false);
+    }
+  };
+
+  // ==========================================
+  // CARREGAMENTO INICIAL
+  // ==========================================
+
+  if (carregandoRole) {
     return (
-      <View style={styles.center}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#483AAE" />
+        <Text style={styles.loadingText}>
+          Carregando informações do rolê...
+        </Text>
       </View>
     );
   }
 
-  const etapasAgrupadas = obterEtapasAgrupadas();
-  const custoAutomaticoCalculado = role.preco_final || 0;
+  // ==========================================
+  // INTERFACE
+  // ==========================================
 
   return (
     <View style={styles.container}>
-      {/* Cabeçalho */}
+
+      {/* CABEÇALHO */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Feather name="arrow-left" size={24} color="#1E1B4B" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{role.nome_role}</Text>
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('RolesScreen')} 
-          style={styles.editButton}
+
+        <Text style={styles.headerTitle}>
+          {modoEdicao ? 'Editar Rolê' : 'Novo Rolê'}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.salvarTopBtn}
+          onPress={salvarRolpesDefinitivoNoBanco}
+          disabled={salvandoBanco}
         >
-          <Feather name="edit-3" size={20} color="#483AAE" />
+          {salvandoBanco ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.salvarTopBtnText}>
+              {modoEdicao ? 'Atualizar' : 'Salvar'}
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Card de Informações e Ação de Status */}
-        <View style={styles.infoCard}>
-          <View style={styles.infoCardTopRow}>
-            <View>
-              <Text style={styles.statusLabel}>Status Atual</Text>
-              <Text style={styles.statusValue}>{role.status}</Text>
-            </View>
-            <TouchableOpacity style={styles.statusChangeButton} onPress={abrirModalStatus}>
-              <Feather name="check-circle" size={16} color="#FFFFFF" />
-              <Text style={styles.statusChangeButtonText}>Alterar Status</Text>
-            </TouchableOpacity>
-          </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
 
-          <View style={styles.divider} />
+        {/* INFORMAÇÕES DO ROLÊ */}
+        <View style={styles.infoCard}>
+          <Text style={styles.labelInput}>Nome do Rolê</Text>
+
+          <TextInput
+            style={styles.inputNomeRole}
+            placeholder="Ex: Roteiro de Botecos"
+            placeholderTextColor="#94A3B8"
+            value={nomeRole}
+            onChangeText={setNomeRole}
+          />
+
+          {modoEdicao && (
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusLabel}>Status atual:</Text>
+              <Text style={styles.statusValue}>{statusRole}</Text>
+            </View>
+          )}
 
           <Text style={styles.precoTotal}>
-            Custo Total: R$ {role.preco_final?.toFixed(2) || '0.00'}
+            Custo Estimado: R$ {precoTotalRascunho.toFixed(2)}
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Etapas do Roteiro</Text>
 
-        {/* Listagem das Etapas Agrupadas */}
-        {etapasAgrupadas.length > 0 ? (
-          etapasAgrupadas.map((etapaObj) => (
-            <View key={etapaObj.etapa} style={styles.timelineWrapper}>
+        {/* LISTAGEM DAS ETAPAS */}
+        {etapasRascunho.length > 0 ? (
+          etapasRascunho.map((etapaObj, index) => (
+            <View key={`etapa-${etapaObj.etapa}`} style={styles.timelineWrapper}>
+
               <View style={styles.nodeCard}>
+
                 <View style={styles.nodeHeader}>
                   <View style={styles.badgeEtapa}>
-                    <Text style={styles.badgeText}>Etapa {etapaObj.etapa}</Text>
+                    <Text style={styles.badgeText}>
+                      Etapa {etapaObj.etapa}
+                    </Text>
                   </View>
+
                   <Text style={styles.localNome} numberOfLines={1}>
-                    {etapaObj.local?.nome || 'Local'}
+                    {etapaObj.locais?.nome || 'Local'}
                   </Text>
+
+                  <TouchableOpacity
+                    onPress={() => removerEtapaRascunho(index)}
+                  >
+                    <Feather
+                      name="trash-2"
+                      size={18}
+                      color="#EF4444"
+                    />
+                  </TouchableOpacity>
                 </View>
 
-                <Text style={styles.localEndereco} numberOfLines={1}>
-                  {etapaObj.local?.endereco || 'Endereço não informado'}
+                <Text style={styles.localEndereco} numberOfLines={2}>
+                  {etapaObj.locais?.endereco || 'Endereço não informado'}
                 </Text>
 
-                {etapaObj.itensConsumo.length > 0 ? (
+                {etapaObj.itens.length > 0 ? (
                   <View style={styles.cardapioContainer}>
+
                     <View style={styles.cardapioHeaderRow}>
-                      <MaterialCommunityIcons name="silverware-fork-knife" size={14} color="#483AAE" />
-                      <Text style={styles.cardapioTituloLista}>Itens consumidos:</Text>
+                      <MaterialCommunityIcons
+                        name="silverware-fork-knife"
+                        size={16}
+                        color="#483AAE"
+                      />
+
+                      <Text style={styles.cardapioTituloLista}>
+                        Itens consumidos:
+                      </Text>
                     </View>
-                    {etapaObj.itensConsumo.map((item, idx) => (
+
+                    {etapaObj.itens.map((item, idx) => (
                       <View key={idx} style={styles.itemRow}>
-                        <Text style={styles.itemName}>• {item.quantidade}x {item.nome}</Text>
-                        <Text style={styles.itemPrice}>R$ {item.custo?.toFixed(2)}</Text>
+                        <Text style={styles.itemName}>
+                          {item.quantidade_item}x {item.nomeItem}
+                        </Text>
+
+                        <Text style={styles.itemPrice}>
+                          R${' '}
+                          {(
+                            item.precoUnitario * item.quantidade_item
+                          ).toFixed(2)}
+                        </Text>
                       </View>
                     ))}
+
+                    <View style={styles.totalEtapaRow}>
+                      <Text style={styles.totalEtapaLabel}>
+                        Total da etapa
+                      </Text>
+
+                      <Text style={styles.totalEtapaValue}>
+                        R$ {etapaObj.custoEtapaTotal.toFixed(2)}
+                      </Text>
+                    </View>
                   </View>
                 ) : (
                   <View style={styles.cardapioDescricaoBox}>
-                    <MaterialCommunityIcons name="map-marker-radius" size={14} color="#64748B" />
-                    <Text style={styles.cardapioDescricaoTextovisita}>Apenas visita / sem consumo registrado</Text>
+                    <MaterialCommunityIcons
+                      name="map-marker-radius"
+                      size={16}
+                      color="#64748B"
+                    />
+
+                    <Text style={styles.cardapioDescricaoTexto}>
+                      Apenas visita / sem consumo registrado
+                    </Text>
                   </View>
                 )}
+
               </View>
 
               <View style={styles.plusContainer}>
                 <View style={styles.timelineLine} />
-                <TouchableOpacity 
+
+                <TouchableOpacity
                   style={styles.plusButton}
-                  onPress={() => navigation.navigate('RolesScreen')}
+                  onPress={abrirModalAdicionarEtapa}
                 >
-                  <Feather name="plus" size={16} color="#FFFFFF" />
+                  <Feather name="plus" size={18} color="#FFFFFF" />
                 </TouchableOpacity>
+
                 <View style={styles.timelineLine} />
               </View>
+
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>Nenhuma etapa cadastrada neste rolê.</Text>
+          <Text style={styles.emptyText}>
+            Nenhuma etapa adicionada ainda. Clique no botão abaixo para começar!
+          </Text>
         )}
 
-        <TouchableOpacity 
+        {/* ADICIONAR ETAPA */}
+        <TouchableOpacity
           style={styles.addButtonFinal}
-          onPress={() => navigation.navigate('RolesScreen')}
+          onPress={abrirModalAdicionarEtapa}
         >
-          <Feather name="plus-circle" size={18} color="#483AAE" />
-          <Text style={styles.addButtonFinalText}>Adicionar nova etapa</Text>
+          <Feather name="plus-circle" size={20} color="#483AAE" />
+
+          <Text style={styles.addButtonFinalText}>
+            Adicionar etapa
+          </Text>
         </TouchableOpacity>
+
+        {/* SALVAR */}
+        {etapasRascunho.length > 0 && (
+          <TouchableOpacity
+            style={styles.salvarFundoBtn}
+            onPress={salvarRolpesDefinitivoNoBanco}
+            disabled={salvandoBanco}
+          >
+            {salvandoBanco ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.salvarFundoBtnText}>
+                {modoEdicao
+                  ? 'Salvar Alterações'
+                  : 'Salvar Rolê Definitivo'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
       </ScrollView>
 
-      {/* Modal para Mudar Status e Definir Custo Final */}
-      <Modal visible={modalStatusVisible} animationType="slide" transparent={true}>
+      {/* ====================================== */}
+      {/* MODAL DE ADICIONAR ETAPA */}
+      {/* ====================================== */}
+
+      <Modal
+        visible={modalEtapaVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalEtapaVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Atualizar Status do Rolê</Text>
 
-            <Text style={styles.modalSubLabel}>Novo Status:</Text>
-            <View style={styles.statusOptionsRow}>
-              {['planejado', 'em andamento', 'realizado', 'cancelado'].map((st) => (
-                <TouchableOpacity
-                  key={st}
-                  style={[
-                    styles.statusOptionChip,
-                    novoStatus === st && styles.statusOptionChipSelected
-                  ]}
-                  onPress={() => setNovoStatus(st)}
-                >
-                  <Text style={[
-                    styles.statusOptionChipText,
-                    novoStatus === st && styles.statusOptionChipTextSelected
-                  ]}>
-                    {st.toUpperCase()}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.modalTitle}>
+              Selecionar Local e Consumo
+            </Text>
 
-            <Text style={[styles.modalSubLabel, { marginTop: 16 }]}>Valor / Gasto Final:</Text>
-            
-            <TouchableOpacity 
-              style={styles.radioOption}
-              onPress={() => setTipoPreco('automatico')}
-            >
-              <MaterialCommunityIcons 
-                name={tipoPreco === 'automatico' ? 'radiobox-marked' : 'radiobox-blank'} 
-                size={20} 
-                color="#483AAE" 
-              />
-              <Text style={styles.radioText}>
-                Usar valor atual (R$ {custoAutomaticoCalculado.toFixed(2)})
-              </Text>
-            </TouchableOpacity>
+            {!localSelecionado ? (
+              <>
+                <TextInput
+                  style={styles.inputSearch}
+                  placeholder="Pesquisar local..."
+                  placeholderTextColor="#94A3B8"
+                  value={buscaLocal}
+                  onChangeText={setBuscaLocal}
+                />
 
-            <TouchableOpacity 
-              style={styles.radioOption}
-              onPress={() => setTipoPreco('manual')}
-            >
-              <MaterialCommunityIcons 
-                name={tipoPreco === 'manual' ? 'radiobox-marked' : 'radiobox-blank'} 
-                size={20} 
-                color="#483AAE" 
-              />
-              <Text style={styles.radioText}>Informar outro valor</Text>
-            </TouchableOpacity>
+                <ScrollView style={{ maxHeight: 300 }}>
+                  {locaisDisponiveis
+                    .filter(l =>
+                      (l.nome || '')
+                        .toLowerCase()
+                        .includes(buscaLocal.toLowerCase())
+                    )
+                    .map(local => (
+                      <TouchableOpacity
+                        key={local.id_local}
+                        style={styles.localItemBox}
+                        onPress={() => selecionarLocalParaEtapa(local)}
+                      >
+                        <Text style={styles.localItemName}>
+                          {local.nome}
+                        </Text>
 
-            {tipoPreco === 'manual' && (
-              <TextInput
-                style={styles.inputValor}
-                placeholder="Ex: 150.00"
-                placeholderTextColor="#94A3B8"
-                keyboardType="numeric"
-                value={valorManual}
-                onChangeText={setValorManual}
-              />
+                        <Text style={styles.localItemAddress}>
+                          {local.endereco}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+
+                  {locaisDisponiveis.length === 0 && (
+                    <Text style={styles.semCardapio}>
+                      Nenhum local disponível.
+                    </Text>
+                  )}
+                </ScrollView>
+              </>
+            ) : (
+              <>
+                <View style={styles.selectedLocalHeaderBox}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.selectedLocalTitle}>
+                      Local: {localSelecionado.nome}
+                    </Text>
+
+                    <Text style={styles.selectedLocalSub}>
+                      {localSelecionado.endereco}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setLocalSelecionado(null);
+                      setCardapioLocal([]);
+                      setItensSelecionadosEtapa({});
+                    }}
+                  >
+                    <Text style={styles.trocarLocalText}>Trocar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.sectionSubTitle}>
+                  Selecione os itens do cardápio:
+                </Text>
+
+                <ScrollView style={{ maxHeight: 250 }}>
+                  {loadingCardapio ? (
+                    <ActivityIndicator
+                      size="small"
+                      color="#483AAE"
+                    />
+                  ) : cardapioLocal.length === 0 ? (
+                    <Text style={styles.semCardapio}>
+                      Nenhum item cadastrado neste local.
+                    </Text>
+                  ) : (
+                    cardapioLocal.map(itemCardap => {
+                      const qtd =
+                        itensSelecionadosEtapa[itemCardap.nome]
+                          ?.quantidade_item || 0;
+
+                      return (
+                        <View
+                          key={itemCardap.id_item}
+                          style={styles.cardapioItemRow}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.cardapioItemName}>
+                              {itemCardap.nome}
+                            </Text>
+
+                            <Text style={styles.cardapioItemPrice}>
+                              R$ {Number(itemCardap.preco || 0).toFixed(2)}
+                            </Text>
+                          </View>
+
+                          <View style={styles.counterRow}>
+                            <TouchableOpacity
+                              style={styles.counterBtn}
+                              onPress={() =>
+                                alterarQtdItemEtapa(itemCardap, -1)
+                              }
+                            >
+                              <Text style={styles.counterBtnText}>-</Text>
+                            </TouchableOpacity>
+
+                            <Text style={styles.counterText}>
+                              {qtd}
+                            </Text>
+
+                            <TouchableOpacity
+                              style={styles.counterBtn}
+                              onPress={() =>
+                                alterarQtdItemEtapa(itemCardap, 1)
+                              }
+                            >
+                              <Text style={styles.counterBtnText}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+                </ScrollView>
+              </>
             )}
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalBtn, styles.cancelBtn]} 
-                onPress={() => setModalStatusVisible(false)}
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.cancelBtn]}
+                onPress={() => setModalEtapaVisible(false)}
               >
                 <Text style={styles.cancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalBtn, styles.saveBtn]} 
-                onPress={salvarAlteracaoStatus}
-                disabled={salvandoStatus}
-              >
-                {salvandoStatus ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Salvar</Text>
-                )}
-              </TouchableOpacity>
+
+              {localSelecionado && (
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.saveBtn]}
+                  onPress={adicionarEtapaAoRascunho}
+                >
+                  <Text style={styles.saveBtnText}>
+                    Confirmar Etapa
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
+
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
+
+// ==========================================
+// ESTILOS
+// ==========================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  center: {
+
+  loadingContainer: {
     flex: 1,
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  loadingText: {
+    marginTop: 12,
+    color: '#64748B',
+    fontSize: 14,
+  },
+
   header: {
+    height: 65,
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
+
+  backButton: {
+    padding: 5,
+  },
+
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1E1B4B',
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: 10,
   },
-  backButton: {
-    padding: 4,
+
+  salvarTopBtn: {
+    backgroundColor: '#483AAE',
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minWidth: 75,
+    alignItems: 'center',
   },
-  editButton: {
-    padding: 4,
+
+  salvarTopBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
+
   scrollContent: {
     padding: 16,
     paddingBottom: 40,
   },
+
   infoCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    elevation: 1,
+    padding: 18,
+    borderRadius: 14,
+    marginBottom: 24,
+    elevation: 2,
   },
-  infoCardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748B',
-    textTransform: 'uppercase',
-  },
-  statusValue: {
+
+  labelInput: {
+    color: '#1E1B4B',
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#1E1B4B',
-    textTransform: 'uppercase',
-    marginTop: 2,
+    marginBottom: 8,
   },
-  statusChangeButton: {
-    backgroundColor: '#483AAE',
+
+  inputNomeRole: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1E293B',
+  },
+
+  statusContainer: {
     flexDirection: 'row',
+    marginTop: 14,
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
   },
-  statusChangeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    marginLeft: 4,
+
+  statusLabel: {
+    color: '#64748B',
+    fontSize: 13,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 12,
-  },
-  precoTotal: {
-    fontSize: 16,
-    fontWeight: 'bold',
+
+  statusValue: {
     color: '#483AAE',
+    fontWeight: 'bold',
+    marginLeft: 6,
+    textTransform: 'capitalize',
   },
-  sectionTitle: {
+
+  precoTotal: {
+    color: '#483AAE',
+    fontWeight: 'bold',
     fontSize: 16,
+    marginTop: 16,
+  },
+
+  sectionTitle: {
+    fontSize: 19,
     fontWeight: 'bold',
     color: '#1E1B4B',
     marginBottom: 16,
   },
+
   timelineWrapper: {
-    alignItems: 'center',
     width: '100%',
   },
+
   nodeCard: {
-    width: '100%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
-    padding: 16,
+    padding: 15,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
   },
+
   nodeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 10,
   },
+
   badgeEtapa: {
     backgroundColor: '#EDE9FE',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 6,
-    marginRight: 8,
   },
+
   badgeText: {
-    fontSize: 12,
-    fontWeight: 'bold',
     color: '#483AAE',
-  },
-  localNome: {
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#1E1B4B',
+  },
+
+  localNome: {
     flex: 1,
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1E293B',
   },
+
   localEndereco: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748B',
-    marginBottom: 12,
+    marginTop: 10,
   },
+
   cardapioContainer: {
-    backgroundColor: '#F8FAFC',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginTop: 4,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
   },
+
   cardapioHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    gap: 7,
+    marginBottom: 10,
   },
+
   cardapioTituloLista: {
     fontSize: 13,
-    fontWeight: '600',
     color: '#483AAE',
-    marginLeft: 6,
+    fontWeight: 'bold',
   },
+
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 2,
-    paddingLeft: 4,
+    marginBottom: 8,
   },
+
   itemName: {
+    color: '#475569',
     fontSize: 13,
-    color: '#1E293B',
+    flex: 1,
   },
+
   itemPrice: {
-    fontSize: 12,
-    color: '#64748B',
+    color: '#334155',
     fontWeight: '600',
+    fontSize: 13,
   },
+
+  totalEtapaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+
+  totalEtapaLabel: {
+    color: '#64748B',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+
+  totalEtapaValue: {
+    color: '#483AAE',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+
   cardapioDescricaoBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    gap: 7,
+    marginTop: 14,
+    backgroundColor: '#F1F5F9',
     padding: 10,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginTop: 4,
   },
-  cardapioDescricaoTextovisita: {
-    fontSize: 13,
+
+  cardapioDescricaoTexto: {
     color: '#64748B',
-    marginLeft: 8,
+    fontSize: 12,
   },
+
   plusContainer: {
     alignItems: 'center',
-    height: 36,
-    justifyContent: 'center',
+    height: 55,
   },
+
   timelineLine: {
-    width: 2,
     flex: 1,
+    width: 2,
     backgroundColor: '#CBD5E1',
   },
+
   plusButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: '#483AAE',
-    width: 26,
-    height: 26,
-    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 4,
-    elevation: 2,
+    marginVertical: 3,
   },
+
   emptyText: {
     textAlign: 'center',
-    color: '#64748B',
-    marginTop: 20,
+    color: '#94A3B8',
+    fontSize: 14,
+    marginVertical: 30,
+    lineHeight: 22,
   },
+
   addButtonFinal: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#483AAE',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 6,
-    elevation: 1,
+    alignItems: 'center',
+    gap: 8,
+    padding: 15,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 10,
+    marginTop: 10,
   },
+
   addButtonFinalText: {
-    marginLeft: 8,
     color: '#483AAE',
     fontWeight: 'bold',
     fontSize: 14,
   },
+
+  salvarFundoBtn: {
+    backgroundColor: '#483AAE',
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+
+  salvarFundoBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     padding: 16,
   },
+
   modalContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 20,
+    maxHeight: '85%',
   },
+
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1E1B4B',
+    marginBottom: 18,
+  },
+
+  inputSearch: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 9,
+    padding: 12,
+    marginBottom: 12,
+    color: '#1E293B',
+  },
+
+  localItemBox: {
+    padding: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+
+  localItemName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1E293B',
+  },
+
+  localItemAddress: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+  },
+
+  selectedLocalHeaderBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    padding: 12,
+    borderRadius: 9,
     marginBottom: 16,
+    gap: 10,
+  },
+
+  selectedLocalTitle: {
+    color: '#1E1B4B',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+
+  selectedLocalSub: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  trocarLocalText: {
+    color: '#483AAE',
+    fontWeight: 'bold',
+  },
+
+  sectionSubTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#334155',
+    marginBottom: 12,
+  },
+
+  semCardapio: {
+    textAlign: 'center',
+    color: '#94A3B8',
+    padding: 20,
+  },
+
+  cardapioItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+
+  cardapioItemName: {
+    color: '#1E293B',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+
+  cardapioItemPrice: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  counterBtn: {
+    width: 30,
+    height: 30,
+    backgroundColor: '#EDE9FE',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  counterBtnText: {
+    color: '#483AAE',
+    fontSize: 19,
+    fontWeight: 'bold',
+  },
+
+  counterText: {
+    color: '#1E293B',
+    fontWeight: 'bold',
+    minWidth: 15,
     textAlign: 'center',
   },
-  modalSubLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-  },
-  statusOptionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 4,
-  },
-  statusOptionChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
-  },
-  statusOptionChipSelected: {
-    backgroundColor: '#483AAE',
-    borderColor: '#483AAE',
-  },
-  statusOptionChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  statusOptionChipTextSelected: {
-    color: '#FFFFFF',
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-  },
-  radioText: {
-    fontSize: 13,
-    color: '#1E293B',
-    marginLeft: 8,
-    flex: 1,
-  },
-  inputValor: {
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: '#1E293B',
-    marginTop: 6,
-    marginBottom: 10,
-  },
+
   modalButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
+    gap: 10,
+    marginTop: 20,
   },
+
   modalBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
+    padding: 13,
+    borderRadius: 9,
     alignItems: 'center',
   },
+
   cancelBtn: {
-    backgroundColor: '#F1F5F9',
-    marginRight: 8,
+    backgroundColor: '#E2E8F0',
   },
+
   cancelBtnText: {
     color: '#475569',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
+
   saveBtn: {
     backgroundColor: '#483AAE',
-    marginLeft: 8,
   },
+
   saveBtnText: {
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: 'bold',
   },
 });

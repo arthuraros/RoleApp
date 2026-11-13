@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
 
@@ -47,9 +47,39 @@ export function EditarLocaisScreen({ navigation, route }) {
   const [cidadeUf, setCidadeUf] = useState('Brasília, DF');
   const [isVisibleInApp, setIsVisibleInApp] = useState(true);
 
-  // Horários e Eventos
+  // Horários
   const [hours, setHours] = useState(DEFAULT_HOURS);
-  const [events, setEvents] = useState([]);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+
+  // Validação: todos os campos preenchidos
+  const isFormComplete = useMemo(() => {
+    const hasNome = nomeLocal.trim().length > 0;
+    const hasDescricao = descricao.trim().length > 0;
+    const hasCategoria = categoria.trim().length > 0;
+    const hasTelefone = telefone.trim().length > 0;
+    const hasFaixaPreco = faixaPreco.trim().length > 0;
+    const hasEndereco = endereco.trim().length > 0;
+    const hasBairro = bairro.trim().length > 0;
+    const hasCidadeUf = cidadeUf.trim().length > 0;
+
+    // Pelo menos um dia deve estar configurado se ativo, e os dias ativos devem ter abre e fecha preenchidos
+    const activeDays = hours.filter((h) => h.active);
+    const hasValidHours =
+      activeDays.length > 0 &&
+      activeDays.every((h) => h.open?.trim().length > 0 && h.close?.trim().length > 0);
+
+    return (
+      hasNome &&
+      hasDescricao &&
+      hasCategoria &&
+      hasTelefone &&
+      hasFaixaPreco &&
+      hasEndereco &&
+      hasBairro &&
+      hasCidadeUf &&
+      hasValidHours
+    );
+  }, [nomeLocal, descricao, categoria, telefone, faixaPreco, endereco, bairro, cidadeUf, hours]);
 
   // Carrega lista de locais do parceiro
   const loadLocais = useCallback(async () => {
@@ -102,9 +132,6 @@ export function EditarLocaisScreen({ navigation, route }) {
         } else {
           setHours(DEFAULT_HOURS);
         }
-
-        // Mapeia eventos
-        setEvents(detalhes.eventos || []);
       }
     } catch (err) {
       console.warn('Erro ao carregar detalhes do local:', err);
@@ -148,19 +175,45 @@ export function EditarLocaisScreen({ navigation, route }) {
     Alert.alert('Sucesso', 'Horários replicados para todos os dias abertos.');
   };
 
-  const handleRemoveEvent = async (idEvento) => {
+  const handleToggleVisibility = async (newVal) => {
+    if (!currentLocal?.id_local) return;
+
+    if (newVal && !isFormComplete) {
+      Alert.alert(
+        'Atenção',
+        'Preencha todos os campos obrigatórios e horários antes de marcar o local como visível.'
+      );
+      return;
+    }
+
+    const previousVal = isVisibleInApp;
+    setIsVisibleInApp(newVal);
+    setTogglingVisibility(true);
+
     try {
-      await parceiroService.removerEvento(idEvento);
-      setEvents((prev) => prev.filter((ev) => ev.id_evento !== idEvento && ev.id !== idEvento));
+      await parceiroService.updateLocal(currentLocal.id_local, {
+        visivel: newVal,
+      });
     } catch (err) {
-      console.error('Erro ao excluir evento:', err);
-      Alert.alert('Erro', 'Não foi possível remover o evento.');
+      console.error('Erro ao atualizar visibilidade:', err);
+      setIsVisibleInApp(previousVal);
+      Alert.alert('Erro', err.message || 'Não foi possível alterar a visibilidade do local.');
+    } finally {
+      setTogglingVisibility(false);
     }
   };
 
   const handleSave = async () => {
     if (!currentLocal?.id_local) {
       Alert.alert('Atenção', 'Nenhum local selecionado para salvar.');
+      return;
+    }
+
+    if (!isFormComplete) {
+      Alert.alert(
+        'Campos incompletos',
+        'Por favor, preencha todos os campos e horários do local antes de publicar.'
+      );
       return;
     }
 
@@ -268,7 +321,8 @@ export function EditarLocaisScreen({ navigation, route }) {
             </View>
             <Switch
               value={isVisibleInApp}
-              onValueChange={setIsVisibleInApp}
+              onValueChange={handleToggleVisibility}
+              disabled={togglingVisibility}
               trackColor={{ false: '#D1D5DB', true: '#1B1445' }}
               thumbColor="#FFFFFF"
             />
@@ -472,46 +526,6 @@ export function EditarLocaisScreen({ navigation, route }) {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Section: Eventos e programação */}
-          <View style={styles.sectionBlock}>
-            <Text style={styles.sectionHeading}>Eventos e programação</Text>
-            <Text style={styles.sectionSubheading}>
-              Aparecem na página do local e na aba “Hoje” do app.
-            </Text>
-
-            {/* Existing Events List */}
-            {events.map((ev) => {
-              const eventId = ev.id_evento || ev.id;
-              return (
-                <View key={eventId} style={styles.eventCard}>
-                  <View style={styles.eventBadge}>
-                    <Text style={styles.eventBadgeDays}>{ev.dias || ev.days}</Text>
-                    <Text style={styles.eventBadgeTime}>{ev.hora || ev.time}</Text>
-                  </View>
-
-                  <View style={styles.eventDetailsCol}>
-                    <Text style={styles.eventTitle}>{ev.titulo || ev.title}</Text>
-                    {!!(ev.detalhes || ev.details) && (
-                      <Text style={styles.eventDescription}>
-                        {ev.detalhes || ev.details}
-                      </Text>
-                    )}
-                  </View>
-
-                  <TouchableOpacity
-                    onPress={() => handleRemoveEvent(eventId)}
-                    style={styles.eventRemoveButton}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="x" size={16} color="#6B7280" />
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-
-
           </View>
 
           {/* Footer Actions */}
@@ -808,80 +822,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#22194D',
     textDecorationLine: 'underline',
-  },
-  eventCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  eventBadge: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 10,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    minWidth: 64,
-  },
-  eventBadgeDays: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#166534',
-  },
-  eventBadgeTime: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#166534',
-  },
-  eventDetailsCol: {
-    flex: 1,
-    paddingHorizontal: 12,
-  },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#000000',
-  },
-  eventDescription: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  eventRemoveButton: {
-    padding: 6,
-  },
-  newEventBox: {
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#7C6EE6',
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 4,
-  },
-  textInputCompact: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#1E1848',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 40,
-    fontSize: 13,
-    color: '#000000',
-  },
-  addEventButton: {
-    backgroundColor: '#E5E7EB',
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  addEventButtonText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#4B5563',
   },
   footerRow: {
     flexDirection: 'row',

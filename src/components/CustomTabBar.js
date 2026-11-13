@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { BottomTabBarHeightCallbackContext } from '@react-navigation/bottom-tabs';
 import {
   View,
   Text,
@@ -76,6 +77,7 @@ export function CustomTabBar({
   blurTarget,
 }) {
   const insets = useSafeAreaInsets();
+  const reportHeight = React.useContext(BottomTabBarHeightCallbackContext);
 
   // Ajusta o menu quando existem 5 ou mais abas
   const compact = state.routes.length >= 5;
@@ -118,6 +120,7 @@ export function CustomTabBar({
 
   return (
     <View
+      onLayout={event => reportHeight?.(event.nativeEvent.layout.height)}
       style={[
         styles.wrapper,
         compact && styles.wrapperCompact,

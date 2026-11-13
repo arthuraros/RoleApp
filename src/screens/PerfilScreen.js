@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,75 +11,53 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from '@react-navigation/native';
+import { createProfileService } from '../services/profileService.js';
+import { profileDisplayName } from '../utils/profile.js';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js'; // Importado getUserReviewsCount
+import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase.js';
 
 const MAX_FILE_SIZE_MB = 5;
+const profileService = createProfileService(supabase);
 
 export function PerfilScreen({ navigation }) {
- const {
-  user,
-  logout,
-  updateUserAvatar,
-  isAdmin,
-  isPartner,
-  refreshProfile,
-  profileError,
-} = useAuth();
+  const { user, logout, isAdmin, isPartner, profileError } = useAuth();
   
+  const tabBarHeight = useBottomTabBarHeight();
+  const [accountProfile, setAccountProfile] = useState(null);
+  const [accountError, setAccountError] = useState(false);
   const [avatarUri, setAvatarUri] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [reviewsCount, setReviewsCount] = useState(0); // Estado para guardar a quantidade de avaliações
+  const [reviewsCount, setReviewsCount] = useState(null); // Estado para guardar a quantidade de avaliações
 
   const userId = user?.id_usuario || user?.id;
 
-  // Busca do avatar na tabela 'usuarios'
-  const fetchUserProfile = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('foto_url')
-        .eq('id_usuario', userId)
-        .single();
-
-      if (error) {
-        console.error('Erro ao buscar foto do usuário:', error.message);
-        return;
-      }
-
-      if (data?.foto_url) {
-        const urlWithTimestamp = `${data.foto_url}?t=${new Date().getTime()}`;
-        setAvatarUri(urlWithTimestamp);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setAccountProfile(null);
+    setAvatarUri(null);
+    setReviewsCount(null);
+    setAccountError(false);
+    if (userId) {
+      profileService.getEditableProfile().then(data => {
+        if (!active) return;
+        setAccountProfile(data);
+        const photoUrl = data?.foto_url;
+        setAvatarUri(photoUrl ? `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : null);
         setImageError(false);
-      }
-    } catch (err) {
-      console.error('Erro na requisição do perfil:', err);
+      }).catch(() => { if (active) setAccountError(true); });
+      getContagemAvaliacoesUsuario(userId).then(count => {
+        if (active) setReviewsCount(count);
+      }).catch(() => { if (active) setReviewsCount(null); });
     }
-  }, [userId]);
-
-  // Busca da quantidade de avaliações feitas pelo usuário
-  const fetchReviewsCount = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      const count = await getContagemAvaliacoesUsuario(userId);
-      setReviewsCount(count);
-    } catch (err) {
-      console.error('Erro ao buscar quantidade de avaliações:', err);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    fetchUserProfile();
-    fetchReviewsCount();
-  }, [fetchUserProfile, fetchReviewsCount]);
+    return () => { active = false; };
+  }, [userId]));
 
   const handleSelectAvatar = async () => {
     try {
@@ -127,10 +105,6 @@ export function PerfilScreen({ navigation }) {
       setAvatarUri(freshUrl);
       setImageError(false);
 
-      if (typeof updateUserAvatar === 'function') {
-        await updateUserAvatar(freshUrl);
-      }
-
       Alert.alert('Sucesso', 'Sua foto de perfil foi atualizada com sucesso!');
     } catch (error) {
       console.error('Erro no upload de avatar:', error);
@@ -141,22 +115,19 @@ export function PerfilScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LinearGradient
         colors={['#1E1848', '#483AAE', '#FFFFFF']}
         locations={[0, 0.4, 0.8]}
         style={styles.topGradientBackground}
       />
 
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Ionicons name="notifications" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.avatarWrapper}
+              accessibilityLabel="Alterar foto do perfil"
               onPress={handleSelectAvatar}
               activeOpacity={0.8}
               disabled={loadingImage}
@@ -188,18 +159,14 @@ export function PerfilScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.userName}>{user?.nome || user?.name || 'Usuário'}</Text>
-            <Text style={styles.userEmail}>{user?.email || 'usuario@email.com'}</Text>
+            <Text style={styles.userName}>{profileDisplayName(accountProfile, user)}</Text>
+            <Text style={styles.userEmail}>{user?.email || 'E-mail não disponível'}</Text>
+            {accountError && <Text>Não foi possível carregar seu nome e sua foto.</Text>}
           </View>
 
           <View style={styles.contentCard}>
             <View style={styles.topCardsRow}>
-              <View style={[styles.card, styles.visitedCard]}>
-                <Text style={styles.visitedCount}>24</Text>
-                <Text style={styles.cardLabel}>Rolês Visitados</Text>
-              </View>
-
-              <TouchableOpacity style={[styles.card, styles.wishlistCard]}>
+              <TouchableOpacity style={[styles.card, styles.wishlistCard, { width: '100%' }]} onPress={() => navigation.navigate('Favoritos')}>
                 <Image
                   source={require('../../assets/bookmark_symbol.png')}
                   style={styles.cardIcon}
@@ -210,14 +177,14 @@ export function PerfilScreen({ navigation }) {
             </View>
 
             <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.actionPill} onPress={handleSelectAvatar}>
+              <TouchableOpacity style={styles.actionPill} onPress={() => navigation.navigate('EditarPerfil')}>
                 <Text style={styles.actionText}>Editar perfil</Text>
                 <Feather name="edit-3" size={16} color="#1E293B" />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionPill}>
+              <TouchableOpacity style={styles.actionPill} onPress={() => navigation.navigate('MinhasAvaliacoes')}>
                 <Text style={styles.actionText}>Avaliações Feitas</Text>
-                <Text style={styles.actionBadge}>{reviewsCount}</Text>
+                <Text style={styles.actionBadge}>{reviewsCount ?? '—'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -265,14 +232,11 @@ export function PerfilScreen({ navigation }) {
                 onPress={() => navigation.navigate('PainelAdmin')}>
                 <Text style={styles.menuText}>Painel Administrativo</Text>
               </TouchableOpacity>}
-              <TouchableOpacity style={styles.menuItem} onPress={refreshProfile}>
-                <Text style={styles.menuText}>Atualizar permissões</Text>
-              </TouchableOpacity>
               {profileError && <Text>{profileError}</Text>}
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Configuracoes')}>
                 <Text style={styles.menuText}>Configurações</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('AjudaSuporte')}>
                 <Text style={styles.menuText}>Ajuda e Suporte</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -281,13 +245,10 @@ export function PerfilScreen({ navigation }) {
               >
                 <Text style={styles.menuText}>Seja parceiro</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
-                <Text style={styles.menuText}>Contate-nos</Text>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('TermosUso')}>
+                <Text style={styles.menuText}>Termos de uso</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
-                <Text style={styles.menuText}>Termos e serviços</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Privacidade')}>
                 <Text style={styles.menuText}>Privacidade</Text>
               </TouchableOpacity>
             </View>
@@ -297,7 +258,7 @@ export function PerfilScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -308,7 +269,6 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   scrollContent: { paddingBottom: 16 },
   header: { alignItems: 'center', paddingBottom: 20, position: 'relative' },
-  notificationButton: { position: 'absolute', top: 10, right: 20, backgroundColor: '#DC2626', borderRadius: 20, padding: 8 },
   avatarWrapper: { position: 'relative', marginBottom: 8 },
   avatarContainer: {
     width: 90,
@@ -341,9 +301,6 @@ const styles = StyleSheet.create({
   contentCard: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
   topCardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   card: { width: '48%', borderWidth: 1, borderColor: '#1E1848', borderRadius: 16, padding: 12, height: 90 },
-  visitedCard: { justifyContent: 'center' },
-  visitedCount: { fontSize: 32, fontWeight: '700', color: '#0F172A' },
-  cardLabel: { fontSize: 12, color: '#334155', fontWeight: '500' },
   wishlistCard: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: { width: 40, height: 40, marginRight: 8 },
   wishlistLabel: { fontSize: 12, fontWeight: '600', color: '#0F172A', flexShrink: 1 },

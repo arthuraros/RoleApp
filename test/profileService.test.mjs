@@ -17,7 +17,7 @@ function mockClient({ role = 'usuario', id = 'user-a', error = null, authError =
         return { eq(column, value) {
           assert.equal(value, id);
           assert.equal(column, table === 'usuarios' ? 'id_usuario' : 'user_id');
-          assert.equal(columns, table === 'usuarios' ? 'id_usuario, foto_url' : 'user_id, role');
+          assert.equal(columns, table === 'usuarios' ? 'id_usuario, foto_url, saldo' : 'user_id, role');
           return { maybeSingle: async () => ({ error, data: table === 'usuarios'
             ? { id_usuario: returnedId, foto_url: 'avatar.png' }
             : role === null ? null : { user_id: returnedId, role },

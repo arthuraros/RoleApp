@@ -11,14 +11,14 @@ export function createProfileService(client) {
       if (!userId) return null;
 
       const [profileResult, roleResult] = await Promise.all([
-        client.from('usuarios').select('id_usuario, foto_url')
+        // Adicionado 'saldo' na consulta
+        client.from('usuarios').select('id_usuario, foto_url, saldo')
           .eq('id_usuario', userId).maybeSingle(),
         client.from('user_roles').select('user_id, role')
           .eq('user_id', userId).maybeSingle(),
       ]);
 
       if (profileResult.error || roleResult.error) {
-        // Não propaga mensagens arbitrárias do servidor para logs de autenticação.
         throw new Error('Perfil ou permissões indisponíveis. Verifique o esquema e as políticas de acesso.');
       }
       if ((profileResult.data && profileResult.data.id_usuario !== userId) ||
@@ -30,9 +30,23 @@ export function createProfileService(client) {
       return {
         id_usuario: userId,
         foto_url: profileResult.data?.foto_url ?? null,
+        saldo: profileResult.data?.saldo ?? 0, // Retorna o saldo atual ou 0
         role,
         permissions: getPermissions(role),
       };
     },
+
+    // Nova função para atualizar o saldo no banco de dados
+    async atualizarSaldo(userId, novoSaldo) {
+      const { error } = await client
+        .from('usuarios')
+        .update({ saldo: novoSaldo })
+        .eq('id_usuario', userId);
+
+      if (error) {
+        throw new Error('Não foi possível atualizar o saldo.');
+      }
+      return novoSaldo;
+    }
   };
 }

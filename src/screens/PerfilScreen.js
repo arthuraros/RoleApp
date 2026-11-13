@@ -440,6 +440,7 @@ export function PerfilScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+      <View style={{height:100}}></View>
         </ScrollView>
       </SafeAreaView>
     </SafeAreaView>

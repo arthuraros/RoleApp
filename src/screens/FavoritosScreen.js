@@ -11,8 +11,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MainLayout } from '../components/MainLayout';
 import { useAuth } from '../contexts/AuthContext';
 import { favoritosService } from '../services/favoritosService';
+import { parceiroService } from '../services/parceiroService';
 
-export function FavoritosScreen() {
+export function FavoritosScreen({ navigation }) {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [locais, setLocais] = useState([]);
@@ -124,6 +125,17 @@ export function FavoritosScreen() {
                         ? `Preço médio: R$ ${item.preco}`
                         : 'Preço não informado'}
                 </Text>
+                <TouchableOpacity
+                  style={styles.detailsButton}
+                  onPress={() => {
+                    if (item.id_local && !String(item.id_local).startsWith('demo-')) {
+                      parceiroService.registrarMetrica({ idLocal: item.id_local, cliques: 1 }).catch(() => {});
+                    }
+                    navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item });
+                  }}
+                >
+                  <Text style={styles.detailsButtonText}>Ver detalhes</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -192,6 +204,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#16A34A',
+    marginTop: 8,
+  },
+  detailsButton: { backgroundColor: '#1E1B4B', borderRadius: 10, paddingVertical: 11, alignItems: 'center', marginTop: 10 },
+  detailsButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  nome: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1E1B4B',
     marginTop: 8,
   },
 });

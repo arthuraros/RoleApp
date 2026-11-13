@@ -59,27 +59,47 @@ export function PerfilScreen({ navigation }) {
     return () => { active = false; };
   }, [userId]));
 
-  const handleSelectAvatar = async () => {
+  const handleSelectAvatar = () => {
+    Alert.alert(
+      'Alterar foto de perfil',
+      'Escolha de onde deseja obter a imagem:',
+      [
+        { text: 'Tirar foto', onPress: () => selecionarImagem(true) },
+        { text: 'Escolher da galeria', onPress: () => selecionarImagem(false) },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  const selecionarImagem = async (camera) => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } = camera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos.');
+        Alert.alert('Permissão necessária', camera
+          ? 'Autorize o acesso à câmera para tirar uma foto.'
+          : 'Autorize o acesso às fotos para escolher uma imagem.');
         return;
       }
+      const options = { mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.8 };
+      const result = camera
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        await processarEEnviarImagem(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Imagem indisponível', 'Não foi possível abrir a câmera ou a galeria. Tente novamente.');
+    }
+  };
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (result.canceled || !result.assets?.[0]?.uri) return;
-
-      const selectedAsset = result.assets[0];
+  // Função auxiliar para validar o tamanho e enviar o arquivo
+  const processarEEnviarImagem = async (imageUri) => {
+    try {
       setLoadingImage(true);
 
-      const fileInfo = await FileSystem.getInfoAsync(selectedAsset.uri);
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
       if (fileInfo.exists && fileInfo.size) {
         const fileSizeMB = fileInfo.size / (1024 * 1024);
         if (fileSizeMB > MAX_FILE_SIZE_MB) {
@@ -98,8 +118,7 @@ export function PerfilScreen({ navigation }) {
         return;
       }
 
-      // Faz o upload correto com ArrayBuffer
-      const publicUrl = await uploadUserAvatar(userId, selectedAsset.uri);
+      const publicUrl = await uploadUserAvatar(userId, imageUri);
       const freshUrl = `${publicUrl}?t=${new Date().getTime()}`;
 
       setAvatarUri(freshUrl);

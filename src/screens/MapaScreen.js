@@ -986,6 +986,13 @@ export function MapaScreen({ navigation }) {
         </View>
       )}
 
+      {/* Card de Attribution do OpenStreetMap */}
+      <View style={styles.attributionCard}>
+        <Text style={styles.attributionText}>
+          Map data © <Text style={styles.attributionLink} onPress={() => Linking.openURL('https://www.openstreetmap.org/copyright')}>OpenStreetMap contributors</Text>
+        </Text>
+      </View>
+
       {/* Map WebView */}
       <View style={styles.mapWrap}>
         <WebView
@@ -1662,5 +1669,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  attributionCard: {
+    position: 'absolute',
+    top: 80,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
+    zIndex: 10,
+  },
+  attributionText: {
+    fontSize: 11,
+    color: '#64748B',
+    textAlign: 'center',
+  },
+  attributionLink: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
   },
 });

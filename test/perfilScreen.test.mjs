@@ -50,6 +50,7 @@ for (const role of ['usuario', 'parceiro', 'admin']) {
     assert.equal(navigations.at(-1), role === 'parceiro' ? 'MeusLugares' : 'SejaParceiro');
     const avatar = ui.nodes().find(n => n.type === 'TouchableOpacity' && n.props.disabled === false);
     await avatar.props.onPress();
+    await ui.alerts.at(-1)[2].find(option => option.text === 'Escolher da galeria').onPress();
     assert.deepEqual(uploads, [['conta', 'foto.jpg']]);
     ui.button('Sair').props.onPress(); assert.equal(navigations.at(-1), 'logout');
   });

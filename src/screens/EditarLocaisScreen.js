@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -54,6 +54,39 @@ export function EditarLocaisScreen({ navigation, route }) {
   // Horários e Eventos
   const [hours, setHours] = useState(DEFAULT_HOURS);
   const [events, setEvents] = useState([]);
+
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const mutationInFlight = useRef(false);
+
+  // Validação: todos os campos preenchidos
+  const isFormComplete = useMemo(() => {
+    const hasNome = nomeLocal.trim().length > 0;
+    const hasDescricao = descricao.trim().length > 0;
+    const hasCategoria = categoria.trim().length > 0;
+    const hasTelefone = telefone.trim().length > 0;
+    const hasFaixaPreco = faixaPreco.trim().length > 0;
+    const hasEndereco = endereco.trim().length > 0;
+    const hasBairro = bairro.trim().length > 0;
+    const hasCidadeUf = cidadeUf.trim().length > 0;
+
+    // Pelo menos um dia deve estar configurado se ativo, e os dias ativos devem ter abre e fecha preenchidos
+    const activeDays = hours.filter((h) => h.active);
+    const hasValidHours =
+      activeDays.length > 0 &&
+      activeDays.every((h) => h.open?.trim().length > 0 && h.close?.trim().length > 0);
+
+    return (
+      hasNome &&
+      hasDescricao &&
+      hasCategoria &&
+      hasTelefone &&
+      hasFaixaPreco &&
+      hasEndereco &&
+      hasBairro &&
+      hasCidadeUf &&
+      hasValidHours
+    );
+  }, [nomeLocal, descricao, categoria, telefone, faixaPreco, endereco, bairro, cidadeUf, hours]);
 
   // Carrega lista de locais do parceiro
   const loadLocais = useCallback(async () => {
@@ -132,7 +165,7 @@ export function EditarLocaisScreen({ navigation, route }) {
   }, [loadLocais]);
 
   const handleSelectPlace = (place) => {
-    if (!saving && !savingLocation) loadLocalData(place.id_local);
+    if (!mutationInFlight.current) loadLocalData(place.id_local);
   };
 
   const handleToggleDay = (index) => {
@@ -180,13 +213,47 @@ export function EditarLocaisScreen({ navigation, route }) {
     }
   };
 
+  const handleToggleVisibility = async (newVal) => {
+    if (!currentLocal?.id_local || loading || mutationInFlight.current) return;
+
+    if (newVal && !isFormComplete) {
+      Alert.alert(
+        'Atenção',
+        'Preencha todos os campos obrigatórios e horários antes de marcar o local como visível.'
+      );
+      return;
+    }
+
+    const idLocal = currentLocal.id_local;
+    mutationInFlight.current = true;
+    const previousVal = isVisibleInApp;
+    setIsVisibleInApp(newVal);
+    setTogglingVisibility(true);
+
+    try {
+      await parceiroService.updateLocal(idLocal, { visivel: newVal });
+      const atualizar = item => String(item?.id_local) === String(idLocal) ? { ...item, visivel: newVal } : item;
+      setCurrentLocal(atualizar);
+      setLocaisList(lista => lista.map(atualizar));
+    } catch (err) {
+      console.error('Erro ao atualizar visibilidade:', err);
+      setIsVisibleInApp(previousVal);
+      Alert.alert('Erro', err.message || 'Não foi possível alterar a visibilidade do local.');
+    } finally {
+      mutationInFlight.current = false;
+      setTogglingVisibility(false);
+    }
+  };
+
   // Salvar a localização do estabelecimento no Supabase
   const handleSaveLocation = async (latitude, longitude) => {
     if (!currentLocal?.id_local) {
       throw new Error('Nenhum estabelecimento selecionado.');
     }
 
+    if (loading || mutationInFlight.current) throw new Error('Aguarde o salvamento em andamento.');
     const idLocal = currentLocal.id_local;
+    mutationInFlight.current = true;
     setSavingLocation(true);
     try {
       const resultado = await parceiroService.atualizarCoordenadasLocal(idLocal, latitude, longitude);
@@ -195,17 +262,27 @@ export function EditarLocaisScreen({ navigation, route }) {
       setCurrentLocal(atualizar);
       setLocaisList(lista => lista.map(atualizar));
     } finally {
+      mutationInFlight.current = false;
       setSavingLocation(false);
     }
   };
 
   const handleSave = async () => {
-    if (loading || saving || savingLocation) return;
+    if (loading || mutationInFlight.current) return;
     if (!currentLocal?.id_local) {
       Alert.alert('Atenção', 'Nenhum local selecionado para salvar.');
       return;
     }
 
+    if (!isFormComplete) {
+      Alert.alert(
+        'Campos incompletos',
+        'Por favor, preencha todos os campos e horários do local antes de publicar.'
+      );
+      return;
+    }
+
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       await Promise.all([
@@ -217,7 +294,6 @@ export function EditarLocaisScreen({ navigation, route }) {
           endereco: endereco.trim(),
           bairro: bairro.trim(),
           cidade_uf: cidadeUf.trim(),
-          visivel: isVisibleInApp,
         }),
         parceiroService.salvarHorarios(currentLocal.id_local, hours),
       ]);
@@ -229,6 +305,7 @@ export function EditarLocaisScreen({ navigation, route }) {
       console.error('Erro ao salvar local:', err);
       Alert.alert('Erro ao Salvar', err.message || 'Falha ao atualizar dados no banco.');
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -317,7 +394,8 @@ export function EditarLocaisScreen({ navigation, route }) {
             </View>
             <Switch
               value={isVisibleInApp}
-              onValueChange={setIsVisibleInApp}
+              onValueChange={handleToggleVisibility}
+              disabled={saving || savingLocation || togglingVisibility}
               trackColor={{ false: '#D1D5DB', true: '#1B1445' }}
               thumbColor="#FFFFFF"
             />
@@ -458,7 +536,7 @@ export function EditarLocaisScreen({ navigation, route }) {
               bairro={bairro}
               cidadeUf={cidadeUf}
               onSalvar={handleSaveLocation}
-              disabled={saving}
+              disabled={saving || togglingVisibility}
             />
           </View>
 
@@ -570,7 +648,7 @@ export function EditarLocaisScreen({ navigation, route }) {
               style={[styles.publishButton, saving && { opacity: 0.7 }]}
               onPress={handleSave}
               activeOpacity={0.85}
-              disabled={saving || savingLocation}
+              disabled={saving || savingLocation || togglingVisibility || !isFormComplete}
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />

@@ -36,9 +36,20 @@
           }
         }
       ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permitir que o RoleApp acesse sua localização para mostrar os locais favoritos no mapa."
+        }
+      ],
       "expo-web-browser",
       "expo-font",
       "expo-status-bar"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bbecbeb8-bcaf-42b8-b1b3-f4f9d06a48eb"
+      }
+    }
   }
 }

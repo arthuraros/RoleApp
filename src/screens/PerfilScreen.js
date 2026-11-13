@@ -310,7 +310,14 @@ export function PerfilScreen({ navigation }) {
                 <View style={styles.saldoHeaderRow}>
                   <Text style={styles.saldoLabel}>Seu Saldo</Text>
                   <TouchableOpacity 
-                    onPress={() => setSaldoVisivel(!saldoVisivel)} 
+                    onPress={() => {
+                      const novaVisibilidade = !saldoVisivel;
+                      setSaldoVisivel(novaVisibilidade);
+                      // Se estiver revelando o saldo, busca os dados mais recentes do banco
+                      if (novaVisibilidade) {
+                        fetchUserProfile();
+                      }
+                    }} 
                     style={styles.eyeButton}
                   >
                     <Feather 

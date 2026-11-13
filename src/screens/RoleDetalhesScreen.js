@@ -26,6 +26,8 @@ export function RoleDetalhesScreen({ route, navigation }) {
   const [nomeRole, setNomeRole] = useState('');
   const [statusRole, setStatusRole] = useState('planejado');
   const [etapasRascunho, setEtapasRascunho] = useState([]);
+  // Estado para armazenar o estado original e comparar alterações
+  const [dadosIniciais, setDadosIniciais] = useState({ nome: '', etapas: [] });
 
   const [salvandoBanco, setSalvandoBanco] = useState(false);
   const [carregandoRole, setCarregandoRole] = useState(false);
@@ -39,8 +41,49 @@ export function RoleDetalhesScreen({ route, navigation }) {
   const [loadingCardapio, setLoadingCardapio] = useState(false);
   const [itensSelecionadosEtapa, setItensSelecionadosEtapa] = useState({});
 
+  const [modalStatusVisible, setModalStatusVisible] = useState(false);
+  const [novoStatus, setNovoStatus] = useState('realizado');
+  const [usarValorCalculado, setUsarValorCalculado] = useState(true);
+  const [valorRealPersonalizado, setValorRealPersonalizado] = useState('');
+  const [carregandoFinalizacao, setCarregandoFinalizacao] = useState(false);
+
+  const [precoFinalSalvo, setPrecoFinalSalvo] = useState(null);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // 1. Se já salvou com sucesso, ou SE O STATUS FOR REALIZADO, deixa sair sem alertar
+      if (salvandoBanco || statusRole === 'realizado') return;
+
+      // 2. Verifica se houve alteração real comparando com os dados iniciais
+      const nomeAlterado = nomeRole.trim() !== dadosIniciais.nome.trim();
+      const etapasAlteradas = JSON.stringify(etapasRascunho) !== JSON.stringify(dadosIniciais.etapas);
+
+      // Se nada mudou, permite a saída imediatamente sem exibir o modal
+      if (!nomeAlterado && !etapasAlteradas) {
+        return;
+      }
+
+      e.preventDefault(); // Impede a saída apenas se houver alterações reais não salvas
+
+      Alert.alert(
+        'Descartar alterações?',
+        'Você tem alterações não salvas. Deseja realmente sair e perder o progresso?',
+        [
+          { text: 'Continuar editando', style: 'cancel', onPress: () => {} },
+          {
+            text: 'Sair sem salvar',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      );
+    });
+
+    return unsubscribe;
+  }, [navigation, salvandoBanco, statusRole, nomeRole, etapasRascunho, dadosIniciais]);
+
   // Custo total
-  const precoTotalRascunho = etapasRascunho.reduce(
+  const precoTotalRascunho = (etapasRascunho || []).reduce(
     (acc, curr) => acc + Number(curr.custoEtapaTotal || 0),
     0
   );
@@ -54,27 +97,24 @@ export function RoleDetalhesScreen({ route, navigation }) {
 
     try {
       setCarregandoRole(true);
-
       let role = roleItem;
 
-      // Se os dados das etapas não vieram pela navegação,
-      // busca novamente no banco.
       if (!role || !Array.isArray(role.roles_etapas)) {
         const rolesUsuario = await roleService.getRolesDoUsuario(userId);
-
-        role = rolesUsuario.find(
-          r => String(r.id_role) === String(roleId)
-        );
+        role = rolesUsuario.find(r => String(r.id_role) === String(roleId));
       }
 
+      // SE O ROLÊ NÃO FOR ENCONTRADO, PARA AQUI E JOGA O ERRO
       if (!role) {
         throw new Error('Rolê não encontrado.');
       }
 
       setNomeRole(role.nome_role || '');
       setStatusRole(role.status || 'planejado');
+      setNomeRole(role.nome_role || '');
+      setStatusRole(role.status || 'planejado');
+      setPrecoFinalSalvo(role.preco_final !== null && role.preco_final !== undefined ? Number(role.preco_final) : null);
 
-      // Agrupa todas as linhas de roles_etapas por número de etapa.
       const etapasAgrupadas = {};
 
       (role.roles_etapas || []).forEach(linha => {
@@ -94,7 +134,6 @@ export function RoleDetalhesScreen({ route, navigation }) {
           };
         }
 
-        // Registros sem item representam apenas visita.
         if (linha.item_cardapio) {
           const quantidade = Number(linha.quantidade_item || 1);
           const custoTotal = Number(linha.custo_acao || 0);
@@ -102,8 +141,7 @@ export function RoleDetalhesScreen({ route, navigation }) {
           etapasAgrupadas[numeroEtapa].itens.push({
             nomeItem: linha.item_cardapio,
             quantidade_item: quantidade,
-            precoUnitario:
-              quantidade > 0 ? custoTotal / quantidade : 0,
+            precoUnitario: quantidade > 0 ? custoTotal / quantidade : 0,
           });
 
           etapasAgrupadas[numeroEtapa].custoEtapaTotal += custoTotal;
@@ -114,15 +152,18 @@ export function RoleDetalhesScreen({ route, navigation }) {
         .sort((a, b) => a.etapa - b.etapa);
 
       setEtapasRascunho(etapasCarregadas);
+      
+      // Atualiza também os dados iniciais com segurança
+      setDadosIniciais({
+        nome: role.nome_role || '',
+        etapas: JSON.parse(JSON.stringify(etapasCarregadas))
+      });
 
     } catch (error) {
       console.error('Erro ao carregar rolê:', error);
-
-      Alert.alert(
-        'Erro',
-        'Não foi possível carregar os detalhes deste rolê.',
-        [{ text: 'Voltar', onPress: () => navigation.goBack() }]
-      );
+      Alert.alert('Erro', 'Não foi possível carregar os detalhes deste rolê.', [
+        { text: 'Voltar', onPress: () => navigation.goBack() },
+      ]);
     } finally {
       setCarregandoRole(false);
     }
@@ -133,6 +174,12 @@ export function RoleDetalhesScreen({ route, navigation }) {
       carregarRoleExistente();
     }
   }, [roleId, userId]);
+
+  useEffect(() => {
+    if (!modoEdicao) {
+      setDadosIniciais({ nome: '', etapas: [] });
+    }
+  }, [modoEdicao]);
 
   // ==========================================
   // CARREGAR LOCAIS
@@ -291,7 +338,7 @@ export function RoleDetalhesScreen({ route, navigation }) {
   // SALVAR OU ATUALIZAR ROLÊ
   // ==========================================
 
-  const salvarRolpesDefinitivoNoBanco = async () => {
+ const salvarRolpesDefinitivoNoBanco = async () => {
     if (!userId) {
       Alert.alert('Erro', 'Usuário não identificado.');
       return;
@@ -303,15 +350,18 @@ export function RoleDetalhesScreen({ route, navigation }) {
     }
 
     if (etapasRascunho.length === 0) {
-      Alert.alert(
-        'Atenção',
-        'Adicione pelo menos uma etapa/local ao rolê.'
-      );
+      Alert.alert('Atenção', 'Adicione pelo menos uma etapa/local ao rolê.');
       return;
     }
 
     try {
       setSalvandoBanco(true);
+
+      // Calcula o preço final somando todas as etapas do rascunho
+      const precoFinalCalculado = etapasRascunho.reduce(
+        (acc, curr) => acc + Number(curr.custoEtapaTotal || 0),
+        0
+      );
 
       const etapasFormatadas = etapasRascunho.map(e => ({
         id_local: e.id_local,
@@ -320,54 +370,111 @@ export function RoleDetalhesScreen({ route, navigation }) {
       }));
 
       if (modoEdicao) {
-        // Atualiza o rolê que já existe.
-        await roleService.atualizarRoleCompleto(
+        // Atualiza o rolê existente (garantindo que o preco_final seja atualizado)
+        await roleService.atualizarRoleCompletoComPreco(
           roleId,
           userId,
           nomeRole.trim(),
-          etapasFormatadas
+          etapasFormatadas,
+          precoFinalCalculado
         );
 
-        Alert.alert(
-          'Sucesso',
-          'Rolê atualizado com sucesso!',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
-        );
+        setDadosIniciais({
+          nome: nomeRole.trim(),
+          etapas: JSON.parse(JSON.stringify(etapasRascunho))
+        });
+
+        Alert.alert('Sucesso', 'Rolê atualizado com sucesso!', [
+          { text: 'OK' },
+        ]);
       } else {
-        // Cria um novo rolê.
+        // Cria novo rolê passando o preço calculado
         await roleService.criarRoleCompletoComEtapas(
           userId,
           nomeRole.trim(),
-          etapasFormatadas
+          etapasFormatadas,
+          precoFinalCalculado // Passa o preço calculado aqui
         );
 
-        Alert.alert(
-          'Sucesso',
-          'Rolê criado e salvo com sucesso!',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
-        );
+        Alert.alert('Sucesso', 'Rolê criado e salvo com sucesso!', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
       }
     } catch (err) {
       console.error('Erro ao salvar rolê:', err);
-
-      Alert.alert(
-        'Erro',
-        modoEdicao
-          ? 'Não foi possível atualizar o rolê.'
-          : 'Não foi possível salvar o rolê.'
-      );
+      Alert.alert('Erro', 'Não foi possível salvar o rolê.');
     } finally {
       setSalvandoBanco(false);
+    }
+  };
+
+  const confirmarMudancaStatusEValores = async () => {
+    if (!userId || !roleId) return;
+
+    try {
+      setCarregandoFinalizacao(true);
+
+      // Define o valor final a ser gravado no rolê
+      const valorFinalDefinitivo = usarValorCalculado
+        ? precoTotalRascunho
+        : parseFloat(valorRealPersonalizado.replace(',', '.'));
+
+      if (isNaN(valorFinalDefinitivo) || valorFinalDefinitivo < 0) {
+        Alert.alert('Atenção', 'Informe um valor final válido.');
+        setCarregandoFinalizacao(false);
+        return;
+      }
+
+      // 1. Busca o saldo atual do usuário para realizar a subtração
+      const { data: usuarioData, error: userError } = await supabase
+        .from('usuarios')
+        .select('saldo')
+        .eq('id_usuario', userId)
+        .single();
+
+      if (userError) throw userError;
+
+      const saldoAtual = Number(usuarioData?.saldo || 0);
+
+      // Se o rolê for marcado como 'realizado', subtraímos o valor_final do saldo
+      // (Se mudar de cancelado/planejado para realizado, subtrai. Se já era realizado, calcula a diferença, mas para simplicidade subtraímos o valor gasto).
+      let novoSaldo = saldoAtual;
+      if (novoStatus === 'realizado') {
+        novoSaldo = saldoAtual - valorFinalDefinitivo;
+      }
+
+      // 2. Atualiza o saldo do usuário na tabela 'usuarios'
+      const { error: saldoError } = await supabase
+        .from('usuarios')
+        .update({ saldo: novoSaldo })
+        .eq('id_usuario', userId);
+
+      if (saldoError) throw saldoError;
+
+      // 3. Atualiza o status e o valor_final (ou preco_final) na tabela 'roles'
+      const { error: roleError } = await supabase
+        .from('roles')
+        .update({
+          status: novoStatus,
+          preco_final: valorFinalDefinitivo, // Armazena como valor/preço final
+        })
+        .eq('id_role', roleId)
+        .eq('id_usuario', userId);
+
+      if (roleError) throw roleError;
+
+      setModalStatusVisible(false);
+      Alert.alert('Sucesso', 'Status e valores atualizados com sucesso!', [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack(),
+        },
+      ]);
+    } catch (err) {
+      console.error('Erro ao atualizar status e saldo:', err);
+      Alert.alert('Erro', 'Não foi possível concluir a operação.');
+    } finally {
+      setCarregandoFinalizacao(false);
     }
   };
 
@@ -406,19 +513,24 @@ export function RoleDetalhesScreen({ route, navigation }) {
           {modoEdicao ? 'Editar Rolê' : 'Novo Rolê'}
         </Text>
 
-        <TouchableOpacity
-          style={styles.salvarTopBtn}
-          onPress={salvarRolpesDefinitivoNoBanco}
-          disabled={salvandoBanco}
-        >
-          {salvandoBanco ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.salvarTopBtnText}>
-              {modoEdicao ? 'Atualizar' : 'Salvar'}
-            </Text>
-          )}
-        </TouchableOpacity>
+        {statusRole !== 'realizado' ? (
+          <TouchableOpacity
+            style={styles.salvarTopBtn}
+            onPress={salvarRolpesDefinitivoNoBanco}
+            disabled={salvandoBanco}
+          >
+            {salvandoBanco ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.salvarTopBtnText}>
+                {modoEdicao ? 'Atualizar' : 'Salvar'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        ) : (
+          // Espaçador para manter o título centralizado caso o botão suma
+          <View style={{ width: 60 }} />
+        )}
       </View>
 
       <ScrollView
@@ -431,54 +543,71 @@ export function RoleDetalhesScreen({ route, navigation }) {
           <Text style={styles.labelInput}>Nome do Rolê</Text>
 
           <TextInput
-            style={styles.inputNomeRole}
+            style={[styles.inputNomeRole, statusRole === 'realizado' && { backgroundColor: '#F1F5F9', color: '#64748B' }]}
             placeholder="Ex: Roteiro de Botecos"
             placeholderTextColor="#94A3B8"
             value={nomeRole}
             onChangeText={setNomeRole}
+            editable={statusRole !== 'realizado'} // <--- ADICIONADO: Bloqueia edição se realizado
           />
 
           {modoEdicao && (
-            <View style={styles.statusContainer}>
-              <Text style={styles.statusLabel}>Status atual:</Text>
-              <Text style={styles.statusValue}>{statusRole}</Text>
-            </View>
+            <TouchableOpacity 
+              style={[styles.statusActionCard, statusRole === 'realizado' && { opacity: 0.8 }]}
+              onPress={() => {
+                // OPCIONAL: Se quiser impedir de abrir o modal de status após realizado, remova o if abaixo ou mantenha para poder reverter
+                if (statusRole === 'realizado') {
+                  Alert.alert('Atenção', 'Este rolê já foi realizado e está bloqueado para edições.');
+                  return;
+                }
+                setNovoStatus(statusRole);
+                setValorRealPersonalizado(precoTotalRascunho.toString());
+                setModalStatusVisible(true);
+              }}
+            >
+              <View>
+                <Text style={styles.statusLabel}>
+                  Status atual: <Text style={styles.statusValueText}>{statusRole}</Text>
+                </Text>
+                <Text style={styles.statusActionSub}>
+                  {statusRole === 'realizado' ? 'Rolê concluído e bloqueado' : 'Toque para alterar status e finalizar'}
+                </Text>
+              </View>
+              <Feather name={statusRole === 'realizado' ? "lock" : "settings"} size={18} color={statusRole === 'realizado' ? "#EF4444" : "#483AAE"} />
+            </TouchableOpacity>
           )}
 
           <Text style={styles.precoTotal}>
-            Custo Estimado: R$ {precoTotalRascunho.toFixed(2)}
+            {precoFinalSalvo !== null ? (
+              <>Custo Final: R$ {precoFinalSalvo.toFixed(2)}</>
+            ) : (
+              <>Custo Estimado: R$ {precoTotalRascunho.toFixed(2)}</>
+            )}
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>Etapas do Roteiro</Text>
 
         {/* LISTAGEM DAS ETAPAS */}
+        {/* LISTAGEM DAS ETAPAS OU BOTÃO CENTRAL INICIAL */}
         {etapasRascunho.length > 0 ? (
           etapasRascunho.map((etapaObj, index) => (
             <View key={`etapa-${etapaObj.etapa}`} style={styles.timelineWrapper}>
-
               <View style={styles.nodeCard}>
-
                 <View style={styles.nodeHeader}>
                   <View style={styles.badgeEtapa}>
-                    <Text style={styles.badgeText}>
-                      Etapa {etapaObj.etapa}
-                    </Text>
+                    <Text style={styles.badgeText}>Etapa {etapaObj.etapa}</Text>
                   </View>
 
                   <Text style={styles.localNome} numberOfLines={1}>
                     {etapaObj.locais?.nome || 'Local'}
                   </Text>
 
-                  <TouchableOpacity
-                    onPress={() => removerEtapaRascunho(index)}
-                  >
-                    <Feather
-                      name="trash-2"
-                      size={18}
-                      color="#EF4444"
-                    />
-                  </TouchableOpacity>
+                  {statusRole !== 'realizado' && (
+                    <TouchableOpacity onPress={() => removerEtapaRascunho(index)}>
+                      <Feather name="trash-2" size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 <Text style={styles.localEndereco} numberOfLines={2}>
@@ -487,17 +616,13 @@ export function RoleDetalhesScreen({ route, navigation }) {
 
                 {etapaObj.itens.length > 0 ? (
                   <View style={styles.cardapioContainer}>
-
                     <View style={styles.cardapioHeaderRow}>
                       <MaterialCommunityIcons
                         name="silverware-fork-knife"
                         size={16}
                         color="#483AAE"
                       />
-
-                      <Text style={styles.cardapioTituloLista}>
-                        Itens consumidos:
-                      </Text>
+                      <Text style={styles.cardapioTituloLista}>Itens consumidos:</Text>
                     </View>
 
                     {etapaObj.itens.map((item, idx) => (
@@ -505,21 +630,14 @@ export function RoleDetalhesScreen({ route, navigation }) {
                         <Text style={styles.itemName}>
                           {item.quantidade_item}x {item.nomeItem}
                         </Text>
-
                         <Text style={styles.itemPrice}>
-                          R${' '}
-                          {(
-                            item.precoUnitario * item.quantidade_item
-                          ).toFixed(2)}
+                          R$ {(item.precoUnitario * item.quantidade_item).toFixed(2)}
                         </Text>
                       </View>
                     ))}
 
                     <View style={styles.totalEtapaRow}>
-                      <Text style={styles.totalEtapaLabel}>
-                        Total da etapa
-                      </Text>
-
+                      <Text style={styles.totalEtapaLabel}>Total da etapa</Text>
                       <Text style={styles.totalEtapaValue}>
                         R$ {etapaObj.custoEtapaTotal.toFixed(2)}
                       </Text>
@@ -532,50 +650,46 @@ export function RoleDetalhesScreen({ route, navigation }) {
                       size={16}
                       color="#64748B"
                     />
-
                     <Text style={styles.cardapioDescricaoTexto}>
                       Apenas visita / sem consumo registrado
                     </Text>
                   </View>
                 )}
-
               </View>
 
-              <View style={styles.plusContainer}>
-                <View style={styles.timelineLine} />
-
-                <TouchableOpacity
-                  style={styles.plusButton}
-                  onPress={abrirModalAdicionarEtapa}
-                >
-                  <Feather name="plus" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-
-                <View style={styles.timelineLine} />
-              </View>
-
+              {statusRole !== 'realizado' && (
+                <View style={styles.plusContainer}>
+                  <View style={styles.timelineLine} />
+                  <TouchableOpacity
+                    style={styles.plusButton}
+                    onPress={abrirModalAdicionarEtapa}
+                  >
+                    <Feather name="plus" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <View style={styles.timelineLine} />
+                </View>
+              )}
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>
-            Nenhuma etapa adicionada ainda. Clique no botão abaixo para começar!
-          </Text>
+          /* Botão central exibido apenas quando não há nenhuma etapa cadastrada */
+          <View style={styles.emptyContainerInitial}>
+            <TouchableOpacity
+              style={styles.centerAddButton}
+              onPress={abrirModalAdicionarEtapa}
+            >
+              <Feather name="plus-circle" size={32} color="#FFFFFF" />
+              <Text style={styles.centerAddButtonText}>Adicionar primeira etapa</Text>
+            </TouchableOpacity>
+            <Text style={styles.emptyText}>
+              Seu rolê ainda não tem locais. Comece adicionando o primeiro ponto do roteiro!
+            </Text>
+          </View>
         )}
 
-        {/* ADICIONAR ETAPA */}
-        <TouchableOpacity
-          style={styles.addButtonFinal}
-          onPress={abrirModalAdicionarEtapa}
-        >
-          <Feather name="plus-circle" size={20} color="#483AAE" />
-
-          <Text style={styles.addButtonFinalText}>
-            Adicionar etapa
-          </Text>
-        </TouchableOpacity>
 
         {/* SALVAR */}
-        {etapasRascunho.length > 0 && (
+        {etapasRascunho.length > 0 && statusRole !== 'realizado' && (
           <TouchableOpacity
             style={styles.salvarFundoBtn}
             onPress={salvarRolpesDefinitivoNoBanco}
@@ -585,9 +699,7 @@ export function RoleDetalhesScreen({ route, navigation }) {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.salvarFundoBtnText}>
-                {modoEdicao
-                  ? 'Salvar Alterações'
-                  : 'Salvar Rolê Definitivo'}
+                {modoEdicao ? 'Salvar Alterações' : 'Salvar Rolê Definitivo'}
               </Text>
             )}
           </TouchableOpacity>
@@ -762,6 +874,98 @@ export function RoleDetalhesScreen({ route, navigation }) {
               )}
             </View>
 
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal para Mudar Status e Gerenciar Valor Final / Saldo */}
+      <Modal visible={modalStatusVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Finalizar / Atualizar Rolê</Text>
+
+            <Text style={styles.sectionSubTitle}>Selecione o Status:</Text>
+            <View style={styles.statusOptionsRow}>
+              {['planejado', 'realizado', 'cancelado'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[
+                    styles.statusChip,
+                    novoStatus === s && styles.statusChipSelected
+                  ]}
+                  onPress={() => setNovoStatus(s)}
+                >
+                  <Text style={[
+                    styles.statusChipText,
+                    novoStatus === s && styles.statusChipTextSelected
+                  ]}>
+                    {s.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.sectionSubTitle, { marginTop: 16 }]}>Valor do Gasto:</Text>
+            <TouchableOpacity 
+              style={styles.checkboxRow}
+              onPress={() => setUsarValorCalculado(true)}
+            >
+              <MaterialCommunityIcons 
+                name={usarValorCalculado ? "radiobox-marked" : "radiobox-blank"} 
+                size={20} 
+                color="#483AAE" 
+              />
+              <Text style={styles.checkboxLabel}>
+                Usar valor calculado automaticamente (R$ {precoTotalRascunho.toFixed(2)})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.checkboxRow, { marginBottom: 12 }]}
+              onPress={() => setUsarValorCalculado(false)}
+            >
+              <MaterialCommunityIcons 
+                name={!usarValorCalculado ? "radiobox-marked" : "radiobox-blank"} 
+                size={20} 
+                color="#483AAE" 
+              />
+              <Text style={styles.checkboxLabel}>Digitar valor real pago</Text>
+            </TouchableOpacity>
+
+            {!usarValorCalculado && (
+              <TextInput
+                style={styles.inputNomeRole}
+                placeholder="Ex: 85.50"
+                placeholderTextColor="#94A3B8"
+                keyboardType="numeric"
+                value={valorRealPersonalizado}
+                onChangeText={setValorRealPersonalizado}
+              />
+            )}
+
+            <Text style={styles.avisoSaldoText}>
+              * Se o status for <Text style={{fontWeight: 'bold'}}>realizado</Text>, o valor final será subtraído do seu saldo.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.cancelBtn]} 
+                onPress={() => setModalStatusVisible(false)}
+              >
+                <Text style={styles.cancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalBtn, styles.saveBtn]} 
+                onPress={confirmarMudancaStatusEValores}
+                disabled={carregandoFinalizacao}
+              >
+                {carregandoFinalizacao ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Confirmar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1021,13 +1225,35 @@ const styles = StyleSheet.create({
   },
 
   plusButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
     backgroundColor: '#483AAE',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
-    marginVertical: 3,
+    marginVertical: 4,
+  },
+  emptyContainerInitial: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  centerAddButton: {
+    backgroundColor: '#483AAE',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    elevation: 3,
+  },
+  centerAddButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 
   emptyText: {
@@ -1234,5 +1460,68 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+  },
+
+  statusActionCard: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  statusValueText: {
+    fontWeight: 'bold',
+    color: '#483AAE',
+    textTransform: 'uppercase',
+  },
+  statusActionSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  statusOptionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  statusChip: {
+    flex: 1,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  statusChipSelected: {
+    backgroundColor: '#483AAE',
+    borderColor: '#483AAE',
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#64748B',
+  },
+  statusChipTextSelected: {
+    color: '#FFFFFF',
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  checkboxLabel: {
+    fontSize: 13,
+    color: '#1E293B',
+    marginLeft: 8,
+  },
+  avisoSaldoText: {
+    fontSize: 11,
+    color: '#64748B',
+    fontStyle: 'italic',
+    marginBottom: 16,
   },
 });

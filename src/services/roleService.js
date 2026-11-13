@@ -15,15 +15,9 @@ export const roleService = {
     );
   },
 
-  async criarRoleCompletoComEtapas(userId, nomeRole, etapasData) {
-    if (!userId) {
-      throw new Error('Usuário não autenticado.');
-    }
-
-    if (!nomeRole?.trim()) {
-      throw new Error('Dê um nome para o rolê.');
-    }
-
+  async criarRoleCompletoComEtapas(userId, nomeRole, etapasData, precoInformado = null) {
+    if (!userId) throw new Error('Usuário não autenticado.');
+    if (!nomeRole?.trim()) throw new Error('Dê um nome para o rolê.');
     if (!etapasData || etapasData.length === 0) {
       throw new Error('Adicione pelo menos um local/etapa.');
     }
@@ -31,17 +25,13 @@ export const roleService = {
     let precoFinalTotal = 0;
     const rowsEtapas = [];
 
-    etapasData.forEach(etapaObj => {
-      const temItens =
-        etapaObj.itens && etapaObj.itens.length > 0;
+    etapasData.forEach((etapaObj) => {
+      const temItens = etapaObj.itens && etapaObj.itens.length > 0;
 
       if (temItens) {
-        etapaObj.itens.forEach(item => {
+        etapaObj.itens.forEach((item) => {
           const qtd = Number(item.quantidade_item || 1);
-
-          const custoItem =
-            Number(item.precoUnitario || 0) * qtd;
-
+          const custoItem = Number(item.precoUnitario || 0) * qtd;
           precoFinalTotal += custoItem;
 
           rowsEtapas.push({
@@ -63,7 +53,10 @@ export const roleService = {
       }
     });
 
-    // Primeiro cria o rolê.
+    // Usa o preço informado ou o calculado por segurança
+    const precoFinalFinal = precoInformado !== null ? precoInformado : precoFinalTotal;
+
+    // 1. Insere o rolê principal salvando o preco_final
     const { data: roleCriado, error: roleError } = await supabase
       .from('roles')
       .insert([
@@ -71,7 +64,7 @@ export const roleService = {
           nome_role: nomeRole.trim(),
           id_usuario: userId,
           status: 'planejado',
-          preco_final: precoFinalTotal,
+          preco_final: precoFinalFinal,
         },
       ])
       .select()
@@ -79,8 +72,8 @@ export const roleService = {
 
     if (roleError) throw roleError;
 
-    // Adiciona o ID do rolê em todas as etapas.
-    const rowsComIdRole = rowsEtapas.map(row => ({
+    // 2. Insere as etapas
+    const rowsComIdRole = rowsEtapas.map((row) => ({
       ...row,
       id_role: roleCriado.id_role,
     }));
@@ -90,56 +83,26 @@ export const roleService = {
       .insert(rowsComIdRole);
 
     if (etapasError) {
-      // Se falhar ao salvar as etapas, tenta remover o rolê criado.
-      await supabase
-        .from('roles')
-        .delete()
-        .eq('id_role', roleCriado.id_role)
-        .eq('id_usuario', userId);
-
+      await supabase.from('roles').delete().eq('id_role', roleCriado.id_role);
       throw etapasError;
     }
 
     return roleCriado;
   },
 
-  // ==========================================
-  // ATUALIZAR ROLÊ EXISTENTE
-  // ==========================================
-
-  async atualizarRoleCompleto(
-    idRole,
-    userId,
-    nomeRole,
-    etapasData
-  ) {
-    if (!idRole || !userId) {
-      throw new Error('Dados inválidos para edição.');
-    }
-
-    if (!nomeRole?.trim()) {
-      throw new Error('Informe o nome do rolê.');
-    }
-
-    if (!etapasData || etapasData.length === 0) {
-      throw new Error('Adicione pelo menos uma etapa.');
-    }
+  async atualizarRoleCompletoComPreco(idRole, userId, nomeRole, etapasData, precoInformado) {
+    if (!idRole || !userId) throw new Error('Dados inválidos para edição.');
 
     let precoFinalTotal = 0;
     const rowsEtapas = [];
 
-    // Recalcula os custos e prepara as etapas.
-    etapasData.forEach(etapaObj => {
-      const temItens =
-        etapaObj.itens && etapaObj.itens.length > 0;
+    etapasData.forEach((etapaObj) => {
+      const temItens = etapaObj.itens && etapaObj.itens.length > 0;
 
       if (temItens) {
-        etapaObj.itens.forEach(item => {
+        etapaObj.itens.forEach((item) => {
           const qtd = Number(item.quantidade_item || 1);
-
-          const custoItem =
-            Number(item.precoUnitario || 0) * qtd;
-
+          const custoItem = Number(item.precoUnitario || 0) * qtd;
           precoFinalTotal += custoItem;
 
           rowsEtapas.push({
@@ -163,43 +126,30 @@ export const roleService = {
       }
     });
 
-    // Atualiza o registro principal.
-    const { data: roleAtualizado, error: updateError } = await supabase
+    const precoFinalFinal = precoInformado !== null ? precoInformado : precoFinalTotal;
+
+    // 1. Atualiza a tabela 'roles' incluindo o preco_final atualizado
+    const { error: updateError } = await supabase
       .from('roles')
       .update({
         nome_role: nomeRole.trim(),
-        preco_final: precoFinalTotal,
+        preco_final: precoFinalFinal,
       })
       .eq('id_role', idRole)
-      .eq('id_usuario', userId)
-      .select()
-      .maybeSingle();
+      .eq('id_usuario', userId);
 
     if (updateError) throw updateError;
 
-    if (!roleAtualizado) {
-      throw new Error('Rolê não encontrado ou sem permissão para editar.');
-    }
+    // 2. Substitui as etapas antigas pelas novas
+    await supabase.from('roles_etapas').delete().eq('id_role', idRole);
 
-    // Remove as etapas antigas.
-    const { error: deleteError } = await supabase
-      .from('roles_etapas')
-      .delete()
-      .eq('id_role', idRole);
-
-    if (deleteError) throw deleteError;
-
-    // Insere as etapas atualizadas.
     const { error: insertError } = await supabase
       .from('roles_etapas')
       .insert(rowsEtapas);
 
     if (insertError) throw insertError;
 
-    return {
-      success: true,
-      role: roleAtualizado,
-    };
+    return { success: true };
   },
 
   // ==========================================

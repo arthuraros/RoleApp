@@ -182,10 +182,7 @@ export function PerfilScreen({ navigation }) {
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Ionicons name="notifications" size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-
+            
             <TouchableOpacity
               style={styles.avatarWrapper}
               onPress={handleSelectAvatar}

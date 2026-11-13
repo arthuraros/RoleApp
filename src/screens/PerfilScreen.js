@@ -74,26 +74,66 @@ export function PerfilScreen({ navigation }) {
   }, [fetchUserProfile, fetchReviewsCount]);
 
   const handleSelectAvatar = async () => {
+    Alert.alert(
+      'Alterar Foto de Perfil',
+      'Escolha de onde deseja obter a imagem:',
+      [
+        {
+          text: 'Tirar Foto',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permissão necessária', 'Precisamos de acesso à sua câmera.');
+              return;
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: 'images',
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets?.[0]?.uri) {
+              await processarEEnviarImagem(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Escolher da Galeria',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos.');
+              return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: 'images',
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets?.[0]?.uri) {
+              await processarEEnviarImagem(result.assets[0].uri);
+            }
+          },
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  // Função auxiliar para validar o tamanho e enviar o arquivo
+  const processarEEnviarImagem = async (imageUri) => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (result.canceled || !result.assets?.[0]?.uri) return;
-
-      const selectedAsset = result.assets[0];
       setLoadingImage(true);
 
-      const fileInfo = await FileSystem.getInfoAsync(selectedAsset.uri);
+      const fileInfo = await FileSystem.getInfoAsync(imageUri);
       if (fileInfo.exists && fileInfo.size) {
         const fileSizeMB = fileInfo.size / (1024 * 1024);
         if (fileSizeMB > MAX_FILE_SIZE_MB) {
@@ -112,8 +152,7 @@ export function PerfilScreen({ navigation }) {
         return;
       }
 
-      // Faz o upload correto com ArrayBuffer
-      const publicUrl = await uploadUserAvatar(userId, selectedAsset.uri);
+      const publicUrl = await uploadUserAvatar(userId, imageUri);
       const freshUrl = `${publicUrl}?t=${new Date().getTime()}`;
 
       setAvatarUri(freshUrl);

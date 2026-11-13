@@ -21,7 +21,7 @@ function fixture({ userId = 'conta-real', authError = null, rpcError = null, rpc
   };
   return { calls, service: createPartnerAccessService(client) };
 }
-const form = { nome: ' Nome ', email: ' a@b.com ', estabelecimento: ' Bar ', cidadeEstado: ' DF ' };
+const form = { nome: ' Nome ', email: ' a@b.com ', telefone: '61999990000', estabelecimento: ' Bar ', cidadeEstado: ' DF ' };
 
 test('ativação administrativa envia somente ID e justificativa, sem status/datas/ator forjados', async () => {
   const { service, calls } = fixture({ rpcData: { status: 'ativa' } });
@@ -60,7 +60,7 @@ for (const role of ['usuario', 'parceiro', 'admin']) {
     });
     assert.equal(result.status, 'pendente');
     assert.deepEqual(calls[0].row, { id_usuario: 'conta-real', nome: 'Nome', email: 'a@b.com',
-      estabelecimento: 'Bar', cidade_estado: 'DF', status: 'pendente' });
+      telefone: '61999990000', estabelecimento: 'Bar', cidade_estado: 'DF', status: 'pendente' });
     assert.equal(calls.length, 1);
   });
 }
@@ -70,6 +70,14 @@ test('formulário incompleto não insere solicitação', async () => {
   await assert.rejects(service.enviarSolicitacaoParceria({ ...form, nome: ' ' }), /Preencha/);
   assert.equal(calls.length, 0);
 });
+
+for (const telefone of [undefined, '', ' ', '61999', '619999900000']) {
+  test(`telefone ausente ou inválido não inicia inserção: ${JSON.stringify(telefone)}`, async () => {
+    const { service, calls } = fixture();
+    await assert.rejects(service.enviarSolicitacaoParceria({ ...form, telefone }), /Preencha|telefone válido com DDD/);
+    assert.equal(calls.length, 0);
+  });
+}
 
 for (const [field, event] of [['views', 'view'], ['cliques', 'clique'], ['visitas', 'visita']]) {
   test(`métrica ${event} usa RPC com evento unitário e não transmite data/ator`, async () => {

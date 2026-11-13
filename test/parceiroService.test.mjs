@@ -34,15 +34,22 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
     assert.equal(table,'solicitacoes_parceria');
     return { insert: row => { inserted=row; return { select:()=>({single:async()=>({data:{id_solicitacao:1,...row},error:null})}) }; } };
   };
-  const result = await parceiroService.enviarSolicitacaoParceria({idUsuario:'forjado',nome:'Teste',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'});
+  const result = await parceiroService.enviarSolicitacaoParceria({idUsuario:'forjado',nome:'Teste',email:'a@b.com',telefone:'61999990000',estabelecimento:'Bar',cidadeEstado:'DF'});
+  assert.deepEqual(inserted, {id_usuario:'user-test',nome:'Teste',email:'a@b.com',telefone:'61999990000',estabelecimento:'Bar',cidade_estado:'DF',status:'pendente'});
   assert.equal(inserted.id_usuario,'user-test'); assert.equal(result.status,'pendente');
 });
 
   test('TU02 - erro de solicitacao nao cria local nem revela erro bruto', async () => {
+  let insertions = 0;
   supabase.from = table => { assert.equal(table,'solicitacoes_parceria'); return {
-    insert:()=>({select:()=>({single:async()=>({data:null,error:{message:'segredo'}})})})
+    insert:row=>{ insertions++; assert.equal(row.telefone,'61999990000'); return {select:()=>({single:async()=>({data:null,error:{message:'segredo'}})})}; }
   }; };
-  await assert.rejects(parceiroService.enviarSolicitacaoParceria({nome:'A',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'}), /parceria/);
+  await assert.rejects(parceiroService.enviarSolicitacaoParceria({nome:'A',email:'a@b.com',telefone:'61999990000',estabelecimento:'Bar',cidadeEstado:'DF'}), error => {
+    assert.match(error.message, /parceria/);
+    assert.ok(!error.message.includes('segredo'));
+    return true;
+  });
+  assert.equal(insertions, 1);
 });
 
   // ==========================================
@@ -380,7 +387,8 @@ describe('Testes de Unidade - Módulo parceiroService (RolêApp)', () => {
   test('TU23 - alias de cadastro cria apenas solicitacao pendente', async () => {
   let calls=0;
   supabase.from=table=>{calls++;assert.equal(table,'solicitacoes_parceria');return {insert:row=>({select:()=>({single:async()=>({data:{id_solicitacao:3,...row},error:null})})})};};
-  const result=await parceiroService.cadastrarNovoParceiro({nome:'A',email:'a@b.com',estabelecimento:'Bar',cidadeEstado:'DF'});
+  const result=await parceiroService.cadastrarNovoParceiro({nome:'A',email:'a@b.com',telefone:'61999990000',estabelecimento:'Bar',cidadeEstado:'DF'});
+  assert.equal(result.telefone,'61999990000');assert.equal(result.id_usuario,'user-test');
   assert.equal(result.status,'pendente');assert.equal(result.id_local,undefined);assert.equal(calls,1);
 });
 });

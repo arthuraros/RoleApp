@@ -227,7 +227,11 @@ export function PerfilScreen({ navigation }) {
                 <Text style={styles.cardLabel}>Rolês Visitados</Text>
               </View>
 
-              <TouchableOpacity style={[styles.card, styles.wishlistCard]}>
+              <TouchableOpacity 
+                style={[styles.card, styles.wishlistCard]}
+                onPress={() => navigation.navigate('RolesScreen')}
+                activeOpacity={0.8}
+              >
                 <Image
                   source={require('../../assets/bookmark_symbol.png')}
                   style={styles.cardIcon}

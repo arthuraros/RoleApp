@@ -17,6 +17,8 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { FavoritosScreen } from '../screens/FavoritosScreen';
 import { MapaScreen } from '../screens/MapaScreen';
 import { PerfilScreen } from '../screens/PerfilScreen';
+import { RolesScreen } from '../screens/RolesScreen';
+import { RoleDetalhesScreen } from '../screens/RoleDetalhesScreen';
 import { SejaParceiroScreen } from '../screens/SejaParceiroScreen';
 import { PainelParceiroScreen } from '../screens/PainelParceiroScreen';
 import { EstatisticasParceiroScreen } from '../screens/EstatisticasParceiroScreen';
@@ -54,6 +56,7 @@ function MainTabs() {
       >
         <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Início' }} />
         <Tab.Screen name="Favoritos" component={FavoritosScreen} />
+        <Tab.Screen name="RolesScreen" component={RolesScreen} options={{ tabBarLabel: 'Rolês' }} />
         <Tab.Screen name="Mapa" component={MapaScreen} />
         <Tab.Screen name="Perfil" component={PerfilScreen} />
         {isPartner && <Tab.Screen name="MeusLugares" component={PartnerPanel}
@@ -81,6 +84,7 @@ function AppNavigator() {
       </Stack.Group>}
       {isAdmin && <Stack.Screen name="PainelAdmin" component={PainelAdminScreen} />}
     <Stack.Screen name="DetalhesLocal" component={DetalhesLocalScreen} />
+    <Stack.Screen name="RoleDetalhesScreen" component={RoleDetalhesScreen} />
     </Stack.Navigator>
   );
 }

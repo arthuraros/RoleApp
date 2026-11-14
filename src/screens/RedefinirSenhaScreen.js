@@ -104,7 +104,7 @@ export function RedefinirSenhaScreen() {
       </TouchableOpacity>
 
       <View style={styles.footerLinkRow}>
-        <TouchableOpacity onPress={cancelPasswordRecovery}>
+        <TouchableOpacity style={styles.textLinkButton} onPress={cancelPasswordRecovery}>
           <Text style={styles.footerLinkBold}>Voltar ao Login</Text>
         </TouchableOpacity>
       </View>
@@ -113,10 +113,13 @@ export function RedefinirSenhaScreen() {
 }
 
 const styles = StyleSheet.create({
+  textLinkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   primaryButton: {
     backgroundColor: '#090A1A',
     borderRadius: 12,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -132,11 +135,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   primaryButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   footerLinkRow: {
+    flexWrap: 'wrap',
+    rowGap: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

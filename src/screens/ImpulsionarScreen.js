@@ -1,14 +1,13 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT } from '../utils/responsive';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -42,8 +41,8 @@ export function ImpulsionarScreen({ navigation, route }) {
   const [selectedLocal, setSelectedLocal] = useState(route?.params?.local || null);
 
   // Highlight inputs
-  const [titulo, setTitulo] = useState();
-  const [mensagem, setMensagem] = useState();
+  const [titulo, setTitulo] = useState('');
+  const [mensagem, setMensagem] = useState('');
 
   // Audience & filters
   const [selectedInterests, setSelectedInterests] = useState([
@@ -170,11 +169,10 @@ export function ImpulsionarScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
+      <KeyboardViewport
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -501,8 +499,8 @@ export function ImpulsionarScreen({ navigation, route }) {
               </View>
             )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 }
@@ -516,6 +514,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    ...FORM_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 36,
@@ -524,6 +523,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     padding: 4,
   },
@@ -551,6 +553,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#4C3BA3',
   },
   modeButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 13.5,
     fontWeight: '700',
@@ -615,12 +619,13 @@ const styles = StyleSheet.create({
     borderColor: '#1E1848',
     borderRadius: 10,
     paddingHorizontal: 14,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     fontSize: 13.5,
     color: '#000000',
   },
   textArea: {
-    height: 80,
+    minHeight: 80,
     textAlignVertical: 'top',
     paddingTop: 10,
   },
@@ -722,6 +727,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   segmentedText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: '700',
     color: '#1B1445',
@@ -741,6 +748,8 @@ const styles = StyleSheet.create({
     color: '#15803D',
   },
   costRow: {
+    flexWrap: 'wrap',
+    gap: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -789,6 +798,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   calcFooterRow: {
+    flexWrap: 'wrap',
+    gap: 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -811,6 +822,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',

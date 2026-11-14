@@ -1,11 +1,14 @@
 import { supabase } from "./supabase.js";
 import { createPartnerAccessService } from "./partnerAccessService.js";
+import { createAdminPlacesService } from "./adminPlacesService.js";
 
 // Serviço administrativo do RolêApp.
 // As operações são autorizadas pelas funções RPC do Supabase.
 const access = createPartnerAccessService(supabase);
 
 export const adminService = {
+  // Bloqueado até aprovação e validação do contrato administrativo v1.
+  locais: createAdminPlacesService(supabase),
   // Listar solicitações administrativas
   listarSolicitacoes: access.listarSolicitacoesAdmin,
 

@@ -1,3 +1,5 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { PAGE_CONTENT } from '../utils/responsive';
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -537,7 +539,7 @@ function confirmarExclusao(produto) {
           </Text>
 
           <View style={styles.linhaBotoes}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flexGrow: 1, flexBasis: 150 }}>
               <Botao
                 titulo="Novo produto"
                 icone="add-circle-outline"
@@ -546,7 +548,7 @@ function confirmarExclusao(produto) {
               />
             </View>
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flexGrow: 1, flexBasis: 150 }}>
               <Botao
                 titulo="Nova categoria"
                 icone="folder-open-outline"
@@ -661,7 +663,7 @@ function confirmarExclusao(produto) {
         transparent
         onRequestClose={fecharModal}
       >
-        <View style={styles.modalFundo}>
+        <KeyboardViewport style={styles.modalFundo}>
           <SafeAreaView style={styles.modalPainel}>
             <View style={styles.modalTopo}>
               <Text style={styles.modalTitulo}>
@@ -684,7 +686,7 @@ function confirmarExclusao(produto) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView
+            <KeyboardAwareScrollView
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ gap: 15, paddingBottom: 20 }}
             >
@@ -803,9 +805,9 @@ function confirmarExclusao(produto) {
                 disabled={salvando}
                 onPress={fecharModal}
               />
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </SafeAreaView>
-        </View>
+        </KeyboardViewport>
       </Modal>
     </SafeAreaView>
   );
@@ -817,6 +819,7 @@ const styles = StyleSheet.create({
     backgroundColor: FUNDO,
   },
   conteudo: {
+    ...PAGE_CONTENT,
     paddingBottom: 35,
   },
   cabecalho: {
@@ -858,16 +861,19 @@ const styles = StyleSheet.create({
     color: ROXO,
   },
   resumoTitulo: {
+    textAlign: 'center',
     fontSize: 11,
     color: ROXO_ESCURO,
     fontWeight: '700',
   },
   secaoTitulo: {
+    flexShrink: 1,
     color: ROXO_ESCURO,
     fontSize: 19,
     fontWeight: '800',
   },
   linhaBotoes: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 10,
     marginTop: 14,
@@ -890,6 +896,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   botaoTexto: {
+    flexShrink: 1,
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 12,
@@ -942,6 +949,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   produtoNome: {
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '800',
     color: ROXO_ESCURO,
@@ -983,6 +991,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20, 12, 40, 0.55)',
   },
   modalPainel: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    flexShrink: 1,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingTop: 22,
@@ -997,6 +1009,8 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   modalTitulo: {
+    flex: 1,
+    marginRight: 12,
     color: ROXO_ESCURO,
     fontSize: 22,
     fontWeight: '800',
@@ -1033,6 +1047,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   categoriaOpcao: {
+  minHeight: 44,
+  maxWidth: '100%',
     borderWidth: 1,
     borderColor: '#DDD1F0',
     backgroundColor: '#F8F4FD',
@@ -1059,6 +1075,8 @@ acoesProduto: {
 },
 
 acaoEditar: {
+  minHeight: 44,
+  maxWidth: '100%',
   flexDirection: 'row',
   alignItems: 'center',
   gap: 5,
@@ -1075,6 +1093,8 @@ acaoEditarTexto: {
 },
 
 acaoDisponibilidade: {
+  minHeight: 44,
+  maxWidth: '100%',
   flexDirection: 'row',
   alignItems: 'center',
   gap: 5,
@@ -1091,6 +1111,8 @@ acaoDisponibilidadeTexto: {
 },
 
 acaoExcluir: {
+  minHeight: 44,
+  maxWidth: '100%',
   flexDirection: 'row',
   alignItems: 'center',
   gap: 5,

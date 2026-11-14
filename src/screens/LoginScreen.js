@@ -118,7 +118,7 @@ export function LoginScreen({ navigation }) {
       {/* Link para Cadastro */}
       <View style={styles.footerLinkRow}>
         <Text style={styles.footerText}>Não tem uma conta? </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Cadastro')}>
+        <TouchableOpacity style={styles.textLinkButton} onPress={() => navigation.navigate('Cadastro')}>
           <Text style={styles.footerLinkBold}>Cadastre-se</Text>
         </TouchableOpacity>
       </View>
@@ -134,7 +134,10 @@ export function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  textLinkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   actionsRow: {
+    flexWrap: 'wrap',
+    gap: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -143,6 +146,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   checkboxWrapper: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -173,7 +179,9 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#090A1A',
     borderRadius: 12,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -188,11 +196,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   primaryButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   footerLinkRow: {
+    flexWrap: 'wrap',
+    rowGap: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

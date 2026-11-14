@@ -530,12 +530,16 @@ const styles = StyleSheet.create({
   },
 
   botaoTexto: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,
   },
 
   botaoGpsTexto: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: ROXO,
     fontWeight: '800',
     fontSize: 14,

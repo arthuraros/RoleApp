@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import * as responsive from '../src/utils/responsive.js';
 import { createRequire } from 'node:module';
 import { supabase } from '../src/services/supabase.js';
 import { parceiroService } from '../src/services/parceiroService.js';
@@ -58,8 +59,8 @@ function mount(file, name, props, overrides = {}) {
     useCallback(fn, deps) { return React.useMemo(() => fn, deps); },
     useEffect(fn, deps) { const i = index++; if (!slots[i] || !same(slots[i].deps, deps)) { const old = slots[i]; slots[i] = { deps }; effects.push(() => { old?.cleanup?.(); slots[i].cleanup = fn(); }); } },
   };
-  const native = new Proxy({ StyleSheet: { create: x => x }, Platform: { OS: 'android' }, Alert: { alert: (...args) => alerts.push(args) } }, { get: (o, k) => o[k] || k });
-  const modules = { react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '@expo/vector-icons': { Ionicons: 'Ionicons', Feather: 'Feather' }, 'react-native-webview': { WebView: 'WebView' }, ...overrides };
+  const native = new Proxy({ useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }), StyleSheet: { create: x => x }, Platform: { OS: 'android' }, Alert: { alert: (...args) => alerts.push(args) } }, { get: (o, k) => o[k] || k });
+  const modules = { '../components/KeyboardForm': { KeyboardViewport: 'KeyboardViewport', KeyboardAwareScrollView: 'ScrollView' }, '../utils/responsive': responsive, react: React, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '@expo/vector-icons': { Ionicons: 'Ionicons', Feather: 'Feather' }, 'react-native-webview': { WebView: 'WebView' }, ...overrides };
   const code = babel.transformSync(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), { babelrc: false, configFile: false, plugins: ['@babel/plugin-transform-react-jsx', '@babel/plugin-transform-modules-commonjs'] }).code;
   const exports = {};
   vm.runInNewContext(code, { exports, require: key => { if (!(key in modules)) throw Error(`Import inesperado: ${key}`); return modules[key]; }, console });

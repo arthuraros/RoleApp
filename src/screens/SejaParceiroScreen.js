@@ -1,15 +1,14 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT } from '../utils/responsive';
 import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Image,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -164,11 +163,10 @@ try {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
+      <KeyboardViewport
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -445,8 +443,8 @@ try {
             </View>
             <Text style={styles.footerCopyright}>©2026 RolêApp</Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 }
@@ -460,6 +458,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    ...FORM_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 28,
@@ -471,6 +470,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     padding: 4,
   },
   alreadyPartnerText: {
@@ -530,6 +532,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
@@ -545,6 +549,8 @@ const styles = StyleSheet.create({
     marginBottom: 34,
   },
   statItem: {
+    flex: 1,
+    minWidth: 0,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -564,7 +570,8 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   howItWorksSection: {
@@ -597,6 +604,7 @@ const styles = StyleSheet.create({
     color: '#4C3BA3',
   },
   stepTitle: {
+    flex: 1,
     fontSize: 16.5,
     fontWeight: '700',
     color: '#000000',
@@ -766,7 +774,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E1848',
     borderRadius: 8,
-    height: 42,
+    minHeight: 44,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     fontSize: 13,
     color: '#0F172A',
@@ -781,6 +790,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   submitButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '800',
@@ -804,6 +815,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   footerLinks: {
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,

@@ -1,3 +1,5 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { PAGE_CONTENT } from '../utils/responsive';
 
 import React, {
   useCallback,
@@ -23,11 +25,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AccessGate } from '../components/AccessGate';
+import { AdminPlacesPanel } from '../components/AdminPlacesPanel';
 import { adminService } from '../services/adminService';
 
 const ROXO = '#6820C9';
 const ESCURO = '#1D173F';
 const FUNDO = '#F8F7FC';
+
+// Disponibilidade da interface, não uma fonte de autorização do backend.
+const SECOES = [
+  { id: 'solicitacoes', nome: 'Solicitações', icone: 'clipboard-outline' },
+  { id: 'locais', nome: 'Locais', icone: 'storefront-outline',
+    descricao: 'A consulta e a gestão de estabelecimentos estarão disponíveis em uma próxima etapa.' },
+  { id: 'campanhas', nome: 'Campanhas', icone: 'megaphone-outline',
+    descricao: 'A análise e o acompanhamento de campanhas estarão disponíveis em uma próxima etapa.' },
+  { id: 'administradores', nome: 'Administradores', icone: 'shield-checkmark-outline',
+    descricao: 'A consulta e a gestão de acessos administrativos estarão disponíveis em uma próxima etapa.' },
+];
 
 const ABAS = [
   { id: 'revisao', nome: 'Revisão', icone: 'clipboard-outline' },
@@ -59,6 +73,8 @@ function BotaoContato({ icone, titulo, valor, onPress }) {
 }
 
 function AdminContent({ navigation }) {
+  const [secao, setSecao] = useState('solicitacoes');
+  const secaoAtual = SECOES.find(item => item.id === secao);
   // Dados da tela
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [aba, setAba] = useState('revisao');
@@ -886,17 +902,18 @@ async function abrirSolicitacao(item) {
   // Tela principal
   return (
     <SafeAreaView style={styles.tela}>
-      <ScrollView
+      <KeyboardViewport style={{ flex: 1 }}>
+      <KeyboardAwareScrollView
         contentContainerStyle={styles.conteudo}
         keyboardShouldPersistTaps="handled"
-        refreshControl={
+        refreshControl={secao === 'solicitacoes' ? (
           <RefreshControl
             refreshing={atualizando}
             onRefresh={() => carregar(true)}
             tintColor={ROXO}
             colors={[ROXO]}
           />
-        }
+        ) : undefined}
       >
         <View style={styles.cabecalho}>
           <TouchableOpacity
@@ -921,12 +938,46 @@ async function abrirSolicitacao(item) {
           </Text>
 
           <Text style={styles.subtitulo}>
-            Gerenciamento de parcerias
+            Gestão do RolêApp
           </Text>
         </View>
 
         <View style={styles.corpo}>
-          {selecionada ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.secoes}
+          >
+            {SECOES.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityLabel={item.nome}
+                accessibilityHint={item.id === 'solicitacoes'
+                  ? 'Abrir solicitações de parceria'
+                  : 'Abrir informações da seção em preparação'}
+                accessibilityState={{ selected: secao === item.id, disabled: encaminhando || decidindo }}
+                disabled={encaminhando || decidindo}
+                onPress={() => setSecao(item.id)}
+                style={[styles.secao, secao === item.id && styles.abaAtiva]}
+              >
+                <Ionicons name={item.icone} size={21} color={secao === item.id ? '#FFFFFF' : ROXO} />
+                <Text style={[styles.secaoTexto, secao === item.id && styles.abaTextoAtiva]}>
+                  {item.nome}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {secao === 'locais' ? <AdminPlacesPanel /> : secao !== 'solicitacoes' ? (
+            <View style={styles.preparacao}>
+              <Ionicons name={secaoAtual.icone} size={36} color={ROXO} />
+              <Text accessibilityRole="header" style={styles.secaoTitulo}>{secaoAtual.nome}</Text>
+              <Text style={styles.preparacaoTitulo}>Funcionalidade em preparação</Text>
+              <Text style={styles.preparacaoTexto}>{secaoAtual.descricao}</Text>
+            </View>
+          ) : selecionada ? (
             renderDetalhes()
           ) : (
             <>
@@ -966,6 +1017,9 @@ async function abrirSolicitacao(item) {
                 {ABAS.map(item => (
                   <TouchableOpacity
                     key={item.id}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.nome}
+                    accessibilityState={{ selected: aba === item.id }}
                     style={[
                       styles.aba,
                       aba === item.id && styles.abaAtiva,
@@ -1056,7 +1110,8 @@ async function abrirSolicitacao(item) {
             </>
           )}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 }
@@ -1077,6 +1132,7 @@ const styles = StyleSheet.create({
   },
 
   conteudo: {
+    ...PAGE_CONTENT,
     paddingBottom: 35,
   },
 
@@ -1110,6 +1166,54 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
+  secoes: {
+    flexGrow: 1,
+    gap: 8,
+    paddingBottom: 16,
+  },
+
+  secao: {
+    flex: 1,
+    minWidth: 128,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#EFE6FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+
+  secaoTexto: {
+    color: ROXO,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  preparacao: {
+    padding: 24,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  preparacaoTitulo: {
+    color: ESCURO,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  preparacaoTexto: {
+    color: '#665B7B',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+
   resumo: {
     flexDirection: 'row',
     gap: 8,
@@ -1131,6 +1235,8 @@ const styles = StyleSheet.create({
   },
 
   resumoTexto: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '700',
     color: ESCURO,
@@ -1169,6 +1275,8 @@ const styles = StyleSheet.create({
   },
 
   linhaTitulo: {
+    flexWrap: 'wrap',
+    gap: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

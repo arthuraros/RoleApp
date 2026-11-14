@@ -1,5 +1,6 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Dimensions , Linking } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Linking, useWindowDimensions, } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { parceiroService } from '../services/parceiroService';
 import { categoriasService } from '../services/categoriasService';
@@ -10,8 +11,11 @@ import { favoritosService } from '../services/favoritosService';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import { resolveHomeCategory, filterHomePlaces } from '../utils/homeFilters';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { responsiveMetrics } from '../utils/responsive';
 
 const DESTAQUES_FALLBACK = [
   {
@@ -34,27 +38,26 @@ const DESTAQUES_FALLBACK = [
   },
 ];
 
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 export function HomeScreen({ navigation }) {
+  const dimensions = useWindowDimensions();
+  const layout = responsiveMetrics({ ...dimensions, insets: useSafeAreaInsets() });
+  const tabBarHeight = useBottomTabBarHeight();
   const [locais, setLocais] = useState([]);
-  const [locaisFiltrados, setLocaisFiltrados] = useState([]);
+  const [locaisError, setLocaisError] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [advancedFilters, setAdvancedFilters] = useState({ price: null, distance: null, categoryIds: [] });
+  const [catalogStatus, setCatalogStatus] = useState('loading');
+  const [categoryRetry, setCategoryRetry] = useState(0);
+  const [matches, setMatches] = useState({ key: '', pigIds: null, advancedIds: null, error: false });
+  const [applyingFilters, setApplyingFilters] = useState(false);
+  const applyVersion = useRef(0);
   const [destaques, setDestaques] = useState(DESTAQUES_FALLBACK);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const { user } = useAuth();
   const [favoritos, setFavoritos] = useState([]);
   const [destaqueAtivo, setDestaqueAtivo] = useState(0);
+  useEffect(() => { setDestaqueAtivo(0); }, [layout.highlightInterval]);
   
   // Estados do Modal de Filtros
   const [isFilterVisible, setIsFilterVisible] = useState(false);
@@ -65,7 +68,7 @@ export function HomeScreen({ navigation }) {
   
   const [tiposRolde, setTiposRolde] = useState([]);
 
-  const slideAnim = useRef(new Animated.Value(-SCREEN_HEIGHT)).current;
+  const slideAnim = useRef(new Animated.Value(-dimensions.height)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const handleOpenFilter = () => {
@@ -87,7 +90,7 @@ export function HomeScreen({ navigation }) {
   const handleCloseFilter = () => {
     Animated.parallel([
       Animated.timing(slideAnim, {
-        toValue: -SCREEN_HEIGHT,
+        toValue: -dimensions.height,
         duration: 1000,
         useNativeDriver: true,
       }),
@@ -147,20 +150,54 @@ export function HomeScreen({ navigation }) {
     }
   };
 
-  const carregarCategorias = async () => {
-    try {
-      const data = await categoriasService.getCategorias();
-      if (Array.isArray(data)) {
-        const formatadas = data.map(cat => ({
-          ...cat,
-          selecionado: false
-        }));
-        setTiposRolde(formatadas);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar categorias:', error.message);
+  useEffect(() => {
+    let active = true;
+    setCatalogStatus('loading');
+    categoriasService.getCategorias().then(data => {
+      if (!active) return;
+      setTiposRolde(previous => (data ?? []).map(category => ({ ...category,
+        selecionado: previous.some(item => item.id_categoria === category.id_categoria && item.selecionado) })));
+      setCatalogStatus('ready');
+    }).catch(() => { if (active) setCatalogStatus('error'); });
+    return () => { active = false; };
+  }, [categoryRetry]);
+
+  const activeCategory = resolveHomeCategory(selectedCategory, tiposRolde);
+  const categoryKey = JSON.stringify([selectedCategory, activeCategory?.databaseId, activeCategory?.status,
+    advancedFilters.categoryIds, selectedCategory ? catalogStatus : null, categoryRetry]);
+  const hasCategoryFilter = Boolean(selectedCategory || advancedFilters.categoryIds.length);
+
+  useEffect(() => {
+    let active = true;
+    if (!hasCategoryFilter) {
+      setMatches({ key: categoryKey, pigIds: null, advancedIds: null, error: false });
+      return () => { active = false; };
     }
-  };
+    if (selectedCategory && catalogStatus !== 'ready') return () => { active = false; };
+    if (activeCategory && activeCategory.status !== 'matched') {
+      setMatches({ key: categoryKey, pigIds: [], advancedIds: null, error: false });
+      return () => { active = false; };
+    }
+    Promise.all([
+      activeCategory ? categoriasService.getLocaisIdsPorCategorias([activeCategory.databaseId]) : null,
+      advancedFilters.categoryIds.length ? categoriasService.getLocaisIdsPorCategorias(advancedFilters.categoryIds) : null,
+    ]).then(([pigIds, advancedIds]) => {
+      if (active) setMatches({ key: categoryKey, pigIds, advancedIds, error: false });
+    }).catch(() => {
+      if (active) setMatches({ key: categoryKey, pigIds: [], advancedIds: [], error: true });
+    });
+    return () => { active = false; };
+  }, [categoryKey]);
+
+  const categoryError = hasCategoryFilter && ((selectedCategory && catalogStatus === 'error')
+    || (matches.key === categoryKey && matches.error));
+  const categoryUnavailable = selectedCategory && catalogStatus === 'ready' && activeCategory?.status !== 'matched';
+  const categoryLoading = hasCategoryFilter && !categoryError && !categoryUnavailable && matches.key !== categoryKey;
+  const locaisFiltrados = categoryLoading || categoryError || categoryUnavailable ? [] : filterHomePlaces(locais, {
+    search, price: advancedFilters.price, distance: advancedFilters.distance, location: userLocation,
+    pigPlaceIds: hasCategoryFilter ? matches.pigIds : null,
+    advancedPlaceIds: hasCategoryFilter ? matches.advancedIds : null,
+  });
 
   const carregarFavoritos = async () => {
     if (!user?.id) {
@@ -203,7 +240,6 @@ export function HomeScreen({ navigation }) {
   useEffect(() => {
     carregarLocais();
     carregarDestaques();
-    carregarCategorias();
     (async () => {
       try {
         const { status } = await Location.getForegroundPermissionsAsync();
@@ -215,99 +251,51 @@ export function HomeScreen({ navigation }) {
     })();
   }, []);
 
-  useEffect(() => {
-    let resultado = [...locais];
-
-    if (search.trim()) {
-      const termo = search.toLowerCase();
-      resultado = resultado.filter((l) => 
-        l.nome?.toLowerCase().includes(termo) || 
-        l.endereco?.toLowerCase().includes(termo)
-      );
-    }
-
-    setLocaisFiltrados(resultado);
-  }, [search, locais]);
-
   const aplicarFiltrosAvancados = async () => {
+    if (applyingFilters) return;
+    const version = ++applyVersion.current;
+    setApplyingFilters(true);
     try {
-      setLoading(true);
-      let locaisBase = [...locais];
-
-      if (price.trim() !== '') {
-        const precoMaximo = parseFloat(price.replace(',', '.'));
-        
-        if (!isNaN(precoMaximo)) {
-          locaisBase = locaisBase.filter((l) => {
-            const valorLocal = l.preco ?? l.preco_entrada;
-            return valorLocal != null && Number(valorLocal) <= precoMaximo;
-          });
+      const priceLimit = price.trim() ? Number(price.replace(',', '.')) : null;
+      const distanceLimit = distance.trim() ? Number(distance.replace(',', '.')) : null;
+      if ((priceLimit !== null && (!Number.isFinite(priceLimit) || priceLimit < 0))
+        || (distanceLimit !== null && (!Number.isFinite(distanceLimit) || distanceLimit < 0))) {
+        Alert.alert('Filtros inválidos', 'Informe valores válidos de preço e distância.');
+        return;
+      }
+      if (distanceLimit > 0 && !userLocation) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (version !== applyVersion.current) return;
+        if (status !== 'granted') {
+          Alert.alert('Permissão de Localização Negada', 'Autorize a localização para aplicar o filtro de distância.', [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Abrir Configurações', onPress: () => Linking.openSettings().catch(() => {}) },
+          ]);
+          return;
         }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (version !== applyVersion.current) return;
+        setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
       }
-
-      if (distance.trim() !== '') {
-        const distanciaMaxima = parseFloat(distance.replace(',', '.'));
-        if (!isNaN(distanciaMaxima) && distanciaMaxima > 0) {
-          let coords = userLocation;
-          if (!coords) {
-            try {
-              const { status } = await Location.requestForegroundPermissionsAsync();
-              if (status === 'granted') {
-                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-                setUserLocation(coords);
-              } else {
-                Alert.alert(
-                  'Permissão de Localização Negada',
-                  'O RolêApp precisa de acesso ao seu GPS para encontrar rolês perto de você.\n\nComo a permissão foi recusada, autorize o acesso à localização nas Configurações do seu aparelho.',
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Abrir Configurações', onPress: () => Linking.openSettings().catch(() => {}) },
-                  ]
-                );
-              }
-            } catch (err) {
-              console.warn('Erro ao obter localização na Home:', err);
-            }
-          }
-
-          if (coords) {
-            locaisBase = locaisBase.filter((l) => {
-              if (l.latitude == null || l.longitude == null) return false;
-              const lat = parseFloat(l.latitude);
-              const lng = parseFloat(l.longitude);
-              if (isNaN(lat) || isNaN(lng)) return false;
-              const dist = haversineKm(coords.lat, coords.lng, lat, lng);
-              return dist <= distanciaMaxima;
-            });
-          }
-        }
-      }
-
-      const categoriasSelecionadas = tiposRolde
-        .filter(c => c.selecionado)
-        .map(c => c.id_categoria);
-
-      if (categoriasSelecionadas.length > 0) {
-        const locaisIdsPermitidos = await categoriasService.getLocaisIdsPorCategorias(categoriasSelecionadas);
-        locaisBase = locaisBase.filter(l => locaisIdsPermitidos.includes(l.id_local));
-      }
-
-      setLocaisFiltrados(locaisBase);
+      if (version !== applyVersion.current) return;
+      setAdvancedFilters({ price: priceLimit, distance: distanceLimit,
+        categoryIds: tiposRolde.filter(category => category.selecionado).map(category => category.id_categoria) });
       handleCloseFilter();
-    } catch (error) {
-      console.error('Erro ao aplicar filtros:', error);
-      Alert.alert('Erro', 'Não foi possível aplicar os filtros.');
+    } catch {
+      if (version === applyVersion.current) Alert.alert('Erro', 'Não foi possível aplicar os filtros. Tente novamente.');
     } finally {
-      setLoading(false);
+      if (version === applyVersion.current) setApplyingFilters(false);
     }
   };
 
   const limparFiltros = () => {
-    setTiposRolde(prev => prev.map(c => ({ ...c, selecionado: false })));
+    applyVersion.current += 1;
+    setApplyingFilters(false);
+    setTiposRolde(prev => prev.map(category => ({ ...category, selecionado: false })));
     setPrice('');
     setDistance('');
-    setLocaisFiltrados(locais);
+    setSelectedCategory(null);
+    setAdvancedFilters({ price: null, distance: null, categoryIds: [] });
     handleCloseFilter();
   };
 
@@ -334,34 +322,10 @@ export function HomeScreen({ navigation }) {
     try {
       setLoading(true);
       const data = await locaisService.getLocais();
-      console.log('LOCAIS RECEBIDOS DO SUPABASE:', data);
-
-      const listaLocais = Array.isArray(data) && data.length > 0
-        ? data
-        : [
-            {
-              id_local: 'demo-1',
-              nome: 'Bistrô do Centro',
-              endereco: 'Asa Sul, Brasília - DF',
-              preco: 25,
-            },
-            {
-              id_local: 'demo-2',
-              nome: 'Parque da Cidade',
-              endereco: 'Asa Sul, Brasília - DF',
-              preco: 0,
-            },
-            {
-              id_local: 'demo-3',
-              nome: 'Café do Rolê',
-              endereco: 'Asa Norte, Brasília - DF',
-              preco: 15,
-            },
-          ];
-
-      setLocais(listaLocais);
-      setLocaisFiltrados(listaLocais);
+      setLocais(Array.isArray(data) ? data : []);
+      setLocaisError(false);
     } catch (error) {
+      setLocaisError(true);
       console.error('Erro ao carregar locais:', error.message);
     } finally {
       setLoading(false);
@@ -394,22 +358,22 @@ export function HomeScreen({ navigation }) {
 
     if (isEven) {
       return (
-        <View key={destaque.id} style={styles.highlightCardEven}>
-          <View style={styles.cardTopAreaEven}>
-            <Image source={{ uri: destaque.imagem }} style={styles.cardImageRight} resizeMode="cover" />
+        <View key={destaque.id} style={[styles.highlightCardEven, { width: layout.highlightWidth, height: layout.compact ? undefined : layout.highlightHeight }]}>
+          <View style={[styles.cardTopAreaEven, { height: layout.compact ? undefined : layout.highlightTopHeight }]}>
+            <Image source={{ uri: destaque.imagem }} style={[styles.cardImageRight, { height: layout.compact ? '100%' : layout.highlightTopHeight }]} resizeMode="cover" />
 
-            <View style={styles.spikesContainer} pointerEvents="none">
+            <View style={[styles.spikesContainer, { left: layout.highlightWidth * 0.46 }]} pointerEvents="none">
               <View style={[styles.spike, styles.spikeTop]} />
               <View style={[styles.spike, styles.spikeMid]} />
               <View style={[styles.spike, styles.spikeBot]} />
             </View>
 
-            <View style={styles.cardTextAreaLeft}>
-              <Text style={styles.highlightTitle} numberOfLines={2}>
+            <View style={[styles.cardTextAreaLeft, { height: layout.compact ? undefined : layout.highlightTopHeight }, layout.compact && styles.highlightTextCompact]}>
+              <Text style={styles.highlightTitle} numberOfLines={layout.compact ? undefined : 2}>
                 {destaque.titulo}
               </Text>
               {Boolean(destaque.mensagem) && (
-                <Text style={styles.highlightSubtitle} numberOfLines={3}>
+                <Text style={styles.highlightSubtitle} numberOfLines={layout.compact ? undefined : 3}>
                   {destaque.mensagem}
                 </Text>
               )}
@@ -417,7 +381,7 @@ export function HomeScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            style={styles.highlightButtonBottom}
+            style={[styles.highlightButtonBottom, layout.compact && styles.highlightButtonCompact]}
             accessibilityRole="button"
             activeOpacity={0.85}
             onPress={() => handlePressDestaque(destaque)}
@@ -429,24 +393,24 @@ export function HomeScreen({ navigation }) {
     }
 
     return (
-      <View key={destaque.id} style={styles.highlightCardOdd}>
+      <View key={destaque.id} style={[styles.highlightCardOdd, { width: layout.highlightWidth, height: layout.compact ? undefined : layout.highlightHeight }]}>
         <Image source={{ uri: destaque.imagem }} style={styles.cardImageLeft} resizeMode="cover" />
 
         <View style={styles.slantDivider} pointerEvents="none" />
 
-        <View style={styles.cardTextAreaRight}>
-          <Text style={styles.highlightTitle} numberOfLines={2}>
+        <View style={[styles.cardTextAreaRight, { height: layout.compact ? undefined : layout.highlightTopHeight }, layout.compact && styles.highlightTextCompact]}>
+          <Text style={styles.highlightTitle} numberOfLines={layout.compact ? undefined : 2}>
             {destaque.titulo}
           </Text>
           {Boolean(destaque.mensagem) && (
-            <Text style={styles.highlightSubtitle} numberOfLines={3}>
+            <Text style={styles.highlightSubtitle} numberOfLines={layout.compact ? undefined : 3}>
               {destaque.mensagem}
             </Text>
           )}
         </View>
 
         <TouchableOpacity
-          style={styles.highlightButtonRight}
+          style={[styles.highlightButtonRight, layout.compact && styles.highlightButtonCompact]}
           accessibilityRole="button"
           activeOpacity={0.85}
           onPress={() => handlePressDestaque(destaque)}
@@ -465,12 +429,13 @@ export function HomeScreen({ navigation }) {
         showsHorizontalScrollIndicator={false}
         style={styles.highlightsContainer}
         contentContainerStyle={{ paddingRight: 4 }}
-        snapToInterval={329}
+        key={`destaques-${layout.highlightInterval}`}
+        snapToInterval={layout.highlightInterval}
         snapToAlignment="start"
         decelerationRate="fast"
         disableIntervalMomentum
         onMomentumScrollEnd={(event) => {
-          const index = Math.round(event.nativeEvent.contentOffset.x / 329);
+          const index = Math.round(event.nativeEvent.contentOffset.x / layout.highlightInterval);
           setDestaqueAtivo(Math.max(0, Math.min(index, destaques.length - 1)));
         }}
       >
@@ -482,18 +447,7 @@ export function HomeScreen({ navigation }) {
         ))}
       </View>
 
-      <View style={styles.placeCard}>
-        <Image
-          source={{ uri: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
-          style={styles.placeImage}
-        />
-        <View style={styles.placeInfo}>
-          <Text style={styles.placeName}>Bistrô do Centro</Text>
-          <Text style={styles.placePrice}>R$ 25,00 por pessoa</Text>
-        </View>
-      </View>
-
-      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Todos os Locais</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>{activeCategory ? `Locais em ${activeCategory.name}` : 'Todos os Locais'}</Text>
     </>
   );
 
@@ -503,15 +457,40 @@ export function HomeScreen({ navigation }) {
       searchValue={search}
       onSearchChange={setSearch}
       onFilterPress={handleOpenFilter}
-      hideCategories={Boolean(search.trim())}
+      selectedCategory={selectedCategory}
+      onSelectCategory={id => setSelectedCategory(previous => previous === id ? null : id)}
     >
+      {activeCategory ? (
+        <View style={styles.activeCategory}>
+          <Text style={styles.activeCategoryText}>Categoria: {activeCategory.name}</Text>
+          <TouchableOpacity onPress={() => setSelectedCategory(null)} accessibilityRole="button"
+            accessibilityLabel="Limpar filtro de categoria" style={styles.clearCategory}>
+            <Text style={styles.clearCategoryText}>Limpar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {categoryError || locaisError ? (
+        <View style={styles.filterFeedback}>
+          <Text>{locaisError ? 'Não foi possível carregar os locais.' : 'Não foi possível carregar o filtro de categorias.'}</Text>
+          <TouchableOpacity accessibilityRole="button" onPress={() => {
+            if (locaisError) carregarLocais();
+            if (categoryError) setCategoryRetry(value => value + 1);
+          }}><Text style={styles.clearCategoryText}>Tentar novamente</Text></TouchableOpacity>
+        </View>
+      ) : categoryUnavailable ? (
+        <Text style={styles.filterFeedback}>A categoria {activeCategory?.name} está indisponível no momento. Escolha outra categoria ou limpe o filtro.</Text>
+      ) : categoryLoading ? (
+        <ActivityIndicator accessibilityLabel="Carregando categoria" style={styles.filterFeedback} color="#1E1B4B" />
+      ) : null}
       <FlatList
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingBottom: 110,
+          paddingBottom: tabBarHeight + 24,
         }}
         data={locaisFiltrados}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         keyExtractor={(item) => item.id_local.toString()}
         ListHeaderComponent={
   search.trim()
@@ -523,9 +502,9 @@ export function HomeScreen({ navigation }) {
     : renderHeader()
 }
 ListEmptyComponent={
-  !loading ? (
+  !loading && !categoryLoading && !categoryError && !categoryUnavailable && !locaisError ? (
     <Text style={{ textAlign: 'center', marginTop: 24, color: '#64748B' }}>
-      Nenhum estabelecimento encontrado.
+      {activeCategory ? `Nenhum local encontrado em ${activeCategory.name} com os filtros atuais.` : 'Nenhum estabelecimento encontrado com os filtros atuais.'}
     </Text>
   ) : null
 }
@@ -581,7 +560,9 @@ ListEmptyComponent={
       />
 
       {/* Modal de Filtros Avançados Corrigido */}
-      <Modal visible={isFilterVisible} transparent={true} animationType="none">
+      <Modal visible={isFilterVisible} transparent={true} animationType="none" onRequestClose={handleCloseFilter}>
+        <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardViewport style={{ flex: 1 }}>
         <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
           <TouchableOpacity 
             style={styles.overlayTouchable} 
@@ -589,8 +570,8 @@ ListEmptyComponent={
             onPress={handleCloseFilter}
           >
             <TouchableOpacity activeOpacity={1} style={styles.cardWrapperTouchable}>
-              <Animated.View style={[styles.filterCard, { transform: [{ translateY: slideAnim }] }]}>
-                <ScrollView showsVerticalScrollIndicator={false}>
+              <Animated.View style={[styles.filterCard, { maxHeight: layout.modalMaxHeight, transform: [{ translateY: slideAnim }] }]}>
+                <KeyboardAwareScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                   
                   {/* Bloco de Preço */}
                   <View style={styles.sectionHeaderModal}>
@@ -649,10 +630,14 @@ ListEmptyComponent={
 
                   {showTipoRolde && (
                     <View style={styles.checkboxGrid}>
+                      {catalogStatus === 'loading' ? <ActivityIndicator accessibilityLabel="Carregando categorias" color="#1E1848" /> : null}
+                      {catalogStatus === 'error' ? <TouchableOpacity onPress={() => setCategoryRetry(value => value + 1)}>
+                        <Text>Não foi possível carregar as categorias. Tentar novamente</Text>
+                      </TouchableOpacity> : null}
                       {tiposRolde.map((cat) => (
                         <TouchableOpacity 
                           key={cat.id_categoria} 
-                          style={styles.checkboxItem}
+                          style={[styles.checkboxItem, layout.compact && { width: '100%' }]}
                           onPress={() => {
                             setTiposRolde(prev => prev.map(item => 
                               item.id_categoria === cat.id_categoria 
@@ -675,6 +660,7 @@ ListEmptyComponent={
                   <TouchableOpacity 
                     style={styles.applyButton} 
                     onPress={aplicarFiltrosAvancados}
+                    disabled={applyingFilters}
                   >
                     <Text style={styles.applyButtonText}>Aplicar Filtros</Text>
                   </TouchableOpacity>
@@ -683,17 +669,24 @@ ListEmptyComponent={
                     <Text style={styles.closeButtonText}>Limpar Filtros</Text>
                   </TouchableOpacity>
 
-                </ScrollView>
+                </KeyboardAwareScrollView>
               </Animated.View>
             </TouchableOpacity>
           </TouchableOpacity>
         </Animated.View>
+        </KeyboardViewport>
+        </SafeAreaView>
       </Modal>
     </MainLayout>
   );
 }
 
 const styles = StyleSheet.create({
+  activeCategory: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginHorizontal: 16, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: '#F0EFF8' },
+  activeCategoryText: { color: '#1E1848', fontWeight: '700', flexShrink: 1 },
+  clearCategory: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 },
+  clearCategoryText: { color: '#483AAE', fontWeight: '700' },
+  filterFeedback: { padding: 16, gap: 8 },
   categoriesContainer: { marginBottom: 20 },
   categoryItem: { alignItems: 'center', marginRight: 16 },
   categoryIconCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center' },
@@ -804,6 +797,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 4,
   },
+  highlightTextCompact: { position: 'relative', width: '100%', padding: 16, backgroundColor: 'rgba(28,22,69,0.88)' },
+  highlightButtonCompact: { position: 'relative', left: undefined, right: undefined, bottom: undefined, width: undefined, margin: 12, paddingHorizontal: 12 },
   highlightTitle: {
     color: '#FFFFFF',
     fontSize: 15,
@@ -825,7 +820,8 @@ const styles = StyleSheet.create({
     bottom: 12,
     left: 14,
     right: 14,
-    height: 34,
+    minHeight: 44,
+    paddingVertical: 8,
     backgroundColor: '#C81D25',
     borderRadius: 8,
     justifyContent: 'center',
@@ -837,7 +833,8 @@ const styles = StyleSheet.create({
     bottom: 12,
     right: 14,
     width: '52%',
-    height: 34,
+    minHeight: 44,
+    paddingVertical: 8,
     backgroundColor: '#C81D25',
     borderRadius: 8,
     justifyContent: 'center',
@@ -845,6 +842,8 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   highlightButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13.5,
@@ -892,8 +891,8 @@ const styles = StyleSheet.create({
     right: 12,
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 3,
@@ -901,9 +900,9 @@ const styles = StyleSheet.create({
   // Estilos corrigidos para o Modal ocupar a largura ideal sem encolher
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   overlayTouchable: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  cardWrapperTouchable: { width: '90%', maxWidth: 400, alignItems: 'center' },
-  filterCard: { width: '100%', maxHeight: SCREEN_HEIGHT * 0.8, backgroundColor: '#D9D9D9', borderRadius: 24, padding: 20, borderWidth: 4, borderColor: '#1E1848' },
-  sectionHeaderModal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  cardWrapperTouchable: { width: '90%', maxWidth: 440, alignItems: 'center', flexShrink: 1 },
+  filterCard: { width: '100%', flexShrink: 1, backgroundColor: '#D9D9D9', borderRadius: 24, padding: 20, borderWidth: 4, borderColor: '#1E1848' },
+  sectionHeaderModal: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   sectionTitleModal: { fontSize: 18, fontWeight: '700', color: '#1E1848' },
   inputContainer: { flexDirection: 'row', alignItems: 'center'},
   currency: { fontSize: 14, fontWeight: '700', color: '#1E1848', marginRight: 4 },
@@ -915,10 +914,10 @@ const styles = StyleSheet.create({
   dropdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
   dropdownTitle: { fontSize: 15, fontWeight: '600', color: '#1E1848' },
   checkboxGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', padding: 10, borderRadius: 12, marginTop: 5 },
-  checkboxItem: { width: '48%', flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
+  checkboxItem: { minHeight: 44, width: '48%', flexDirection: 'row', alignItems: 'center', marginVertical: 6 },
   checkboxBox: { width: 16, height: 16, borderWidth: 1, borderColor: 'transparent', borderRadius: 4, marginRight: 8, elevation: 1, shadowColor: '#1E1848', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.25, shadowRadius: 3},
   checkboxChecked: { backgroundColor: '#C51212' },
-  checkboxText: { fontSize: 13, color: '#1E1848', fontWeight: '500' },
+  checkboxText: { flexShrink: 1, fontSize: 13, color: '#1E1848', fontWeight: '500' },
   applyButton: { backgroundColor: '#483AAE', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 20 },
   applyButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   closeButtonModal: { paddingVertical: 10, alignItems: 'center', marginTop: 5 },

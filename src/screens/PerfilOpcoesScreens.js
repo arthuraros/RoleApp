@@ -1,6 +1,8 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT } from '../utils/responsive';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, ScrollView, Share, StyleSheet,
-  Text, TextInput, TouchableOpacity, View, KeyboardAvoidingView, Platform } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Share, StyleSheet,
+  Text, TextInput, TouchableOpacity, View, } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,14 +15,14 @@ const service = createProfileService(supabase);
 function Page({ navigation, title, children }) {
   return <SafeAreaView style={styles.page}>
     <View style={styles.header}>
-      <TouchableOpacity accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
+      <TouchableOpacity accessibilityLabel="Voltar" style={{ minWidth: 44, minHeight: 44, justifyContent: 'center' }} onPress={() => navigation.goBack()}>
         <Ionicons name="arrow-back" size={26} color="#FFFFFF" />
       </TouchableOpacity>
       <Text style={styles.title}>{title}</Text>
     </View>
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-    </KeyboardAvoidingView>
+    <KeyboardViewport style={{ flex: 1 }}>
+      <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</KeyboardAwareScrollView>
+    </KeyboardViewport>
   </SafeAreaView>;
 }
 
@@ -195,7 +197,7 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F8F7FC' },
   header: { backgroundColor: '#483AAE', padding: 20, flexDirection: 'row', alignItems: 'center', gap: 16 },
   title: { color: '#FFFFFF', fontSize: 21, fontWeight: '700', flex: 1 },
-  content: { padding: 20, paddingBottom: 32, gap: 14 },
+  content: { ...FORM_CONTENT, padding: 20, paddingBottom: 32, gap: 14 },
   heading: { color: '#1E1848', fontSize: 19, fontWeight: '700' },
   label: { color: '#1E1848', fontSize: 16, fontWeight: '600' },
   body: { color: '#334155', fontSize: 15, lineHeight: 23 },

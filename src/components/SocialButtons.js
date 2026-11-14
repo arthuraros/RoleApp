@@ -32,6 +32,8 @@ const styles = StyleSheet.create({
   },
   text: {
     fontWeight: 500,
+    flexShrink: 1,
+    textAlign: 'center',
   },
   googleIcon: {
     width: 30,
@@ -40,7 +42,9 @@ const styles = StyleSheet.create({
   },
   socialCircle: {
     width: '100%',
-    height: 48,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 24,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',

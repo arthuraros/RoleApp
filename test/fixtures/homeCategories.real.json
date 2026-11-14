@@ -1,0 +1,23 @@
+{
+  "source": "Supabase público, consultas somente de leitura em 2026-11-13; retrato para regressão, não usado no app",
+  "categories": [
+    { "id_categoria": 5, "nome": "Cafés" },
+    { "id_categoria": 4, "nome": "Cinemas" },
+    { "id_categoria": 1, "nome": "Comidas" },
+    { "id_categoria": 6, "nome": "Eventos" },
+    { "id_categoria": 2, "nome": "Festas" },
+    { "id_categoria": 3, "nome": "Parques" }
+  ],
+  "places": [
+    { "id_local": 2, "nome": "Parque das Águas", "endereco": "Asa Norte, Brasília - DF", "preco": 15, "preco_entrada": 0, "latitude": -15.744, "longitude": -47.882 },
+    { "id_local": 3, "nome": "Cine Brasília", "endereco": "Asa Sul, Brasília - DF", "preco": 30, "preco_entrada": 30, "latitude": -15.813, "longitude": -47.901 },
+    { "id_local": 4, "nome": "Sabor do Cerrado", "endereco": "Taguatinga, Brasília - DF", "preco": 45, "preco_entrada": null, "latitude": -15.835, "longitude": -48.056 },
+    { "id_local": 8, "nome": "Bar da lora", "endereco": "Rua 58, conjunto c, casa 8", "preco": 1, "preco_entrada": 0, "latitude": -15.664399, "longitude": -48.1907781 }
+  ],
+  "links": [
+    { "id_categoria": 5, "id_local": 1 },
+    { "id_categoria": 3, "id_local": 2 },
+    { "id_categoria": 4, "id_local": 3 },
+    { "id_categoria": 1, "id_local": 4 }
+  ]
+}

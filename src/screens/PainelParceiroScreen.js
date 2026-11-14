@@ -1,3 +1,4 @@
+import { PAGE_CONTENT } from '../utils/responsive';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -10,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
@@ -25,6 +27,7 @@ const DEFAULT_WEEK_DATA = [
 ];
 
 export function PainelParceiroScreen({ navigation }) {
+  const tabBarHeight = useBottomTabBarHeight();
   const { user } = useAuth();
   const [locais, setLocais] = useState([]);
   const [selectedLocal, setSelectedLocal] = useState(null);
@@ -147,7 +150,7 @@ export function PainelParceiroScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Top Back Button */}
@@ -347,6 +350,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EAE8F4',
   },
   scrollContent: {
+    ...PAGE_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 110,
@@ -355,6 +359,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     padding: 4,
   },
@@ -408,7 +415,9 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   statCard: {
-    width: '48%',
+    flexBasis: 150,
+    flexGrow: 1,
+    minWidth: 0,
     backgroundColor: '#DDD8FB',
     borderRadius: 16,
     padding: 14,
@@ -469,6 +478,8 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   chartHeader: {
+    flexWrap: 'wrap',
+    gap: 6,
     flexDirection: 'row',
     alignItems: 'baseline',
     marginBottom: 10,
@@ -500,7 +511,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 155,
+    minHeight: 200,
     paddingHorizontal: 4,
   },
   barColumn: {
@@ -520,6 +531,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#9E1B1B',
   },
   barDayLabel: {
+    maxWidth: '100%',
+    textAlign: 'center',
     fontSize: 11,
     fontWeight: '600',
     color: '#6B7280',
@@ -535,11 +548,14 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   actionCardsRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 12,
     marginBottom: 12,
   },
   actionCard: {
+    flexBasis: 150,
+    minWidth: 0,
     flex: 1,
     backgroundColor: '#1E2538',
     borderRadius: 16,

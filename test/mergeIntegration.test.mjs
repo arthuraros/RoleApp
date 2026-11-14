@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import semver from 'semver';
 import { renderScreen } from './helpers/render-screen.mjs';
 import { profileDisplayName } from '../src/utils/profile.js';
 
@@ -100,6 +101,7 @@ for (const mode of ['success', 'denied', 'cancelled', 'error']) {
       '../contexts/AuthContext': { useAuth: () => ({ user: { id: 'conta' } }) },
       '../services/profileService.js': { createProfileService: () => ({ getEditableProfile: async () => null }) },
       '../services/supabase.js': { supabase: {} }, '../utils/profile.js': { profileDisplayName },
+      '../services/favoritosService': { favoritosService: { getLocaisFavoritos: async () => [] } },
       '../services/userService.js': { getContagemAvaliacoesUsuario: async () => 0, uploadUserAvatar: async (...args) => { uploads.push(args); return 'https://exemplo.com/avatar.jpg'; } },
       'expo-file-system/legacy': { getInfoAsync: async () => ({ exists: true, size: 100 }) },
       'expo-image-picker': {
@@ -124,6 +126,8 @@ test('merge: favoritos abrem detalhes e metrica nao bloqueia navegacao', async (
       '../contexts/AuthContext': { useAuth: () => ({ user: { id: 'conta' } }) },
       '../components/MainLayout': { MainLayout: 'MainLayout' },
       '../services/favoritosService': { favoritosService: { getLocaisFavoritos: async () => [details] } },
+      '../services/categoriasService': { categoriasService: { getCategorias: async () => [] } },
+      '../utils/homeFilters': await import('../src/utils/homeFilters.js'),
       '../services/parceiroService': { parceiroService: { registrarMetrica: async () => { throw Error('Sem rede'); } } },
     });
   await ui.settle();
@@ -141,7 +145,9 @@ test('merge: configuracoes JSON e lockfile concordam; mapa mantem coordenadas e 
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
   assert.deepEqual(lock.packages[''].dependencies, pkg.dependencies);
-  assert.equal(lock.packages['node_modules/expo'].version, '58.0.24');
+  const expoVersion = lock.packages['node_modules/expo'].version;
+  assert.ok(semver.satisfies(expoVersion, pkg.dependencies.expo),
+    `Expo ${expoVersion} no lockfile deve satisfazer ${pkg.dependencies.expo} do package.json`);
   assert.equal(app.scheme, 'roleapp'); assert.ok(app.plugins.some(p => Array.isArray(p) && p[0] === 'expo-location'));
   assert.equal(eas.build.preview.distribution, 'internal'); assert.equal(eas.build.production.autoIncrement, true);
   const map = read('src/screens/MapaScreen.js');

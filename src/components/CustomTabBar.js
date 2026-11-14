@@ -16,7 +16,6 @@ import {
   colors,
   radius,
   spacing,
-  normalizeFont,
 } from '../utils/theme';
 
 function TabButton({
@@ -55,9 +54,7 @@ function TabButton({
       />
 
       <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}
+        numberOfLines={2}
         style={[
           styles.label,
           compact && styles.labelCompact,
@@ -90,6 +87,9 @@ export function CustomTabBar({
       case 'Favoritos':
         return 'heart';
 
+      case 'RolesScreen':
+        return 'compass';
+
       case 'Mapa':
         return 'map';
 
@@ -109,6 +109,9 @@ export function CustomTabBar({
       case 'Home':
         return 'Início';
 
+      case 'RolesScreen':
+        return 'Rolês';
+
       case 'MeusLugares':
         // Nome reduzido na barra para caber em 5 abas
         return 'Lugares';
@@ -126,6 +129,8 @@ export function CustomTabBar({
         compact && styles.wrapperCompact,
         {
           paddingBottom: Math.max(insets.bottom, 8),
+          paddingLeft: Math.max((insets.left || 0) + 8, compact ? 6 : spacing.md),
+          paddingRight: Math.max((insets.right || 0) + 8, compact ? 6 : spacing.md),
         },
       ]}
     >
@@ -199,6 +204,9 @@ const styles = StyleSheet.create({
   },
 
   blurContainer: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
     borderRadius: radius.xl,
     overflow: 'hidden',
     borderWidth: 1,
@@ -248,14 +256,14 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    fontSize: normalizeFont(11),
+    fontSize: 11,
     fontWeight: '700',
     textAlign: 'center',
     width: '100%',
   },
 
   labelCompact: {
-    fontSize: normalizeFont(9),
+    fontSize: 11,
     marginTop: 1,
   },
 });

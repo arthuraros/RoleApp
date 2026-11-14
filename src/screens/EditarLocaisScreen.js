@@ -1,16 +1,16 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT, responsiveMetrics } from '../utils/responsive';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Switch,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -29,6 +29,7 @@ const DEFAULT_HOURS = [
 ];
 
 export function EditarLocaisScreen({ navigation, route }) {
+  const layout = responsiveMetrics(useWindowDimensions());
   const { user } = useAuth();
   const userId = user?.id_usuario || user?.id;
 
@@ -326,11 +327,10 @@ export function EditarLocaisScreen({ navigation, route }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
+      <KeyboardViewport
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -546,7 +546,7 @@ export function EditarLocaisScreen({ navigation, route }) {
 
             <View style={styles.hoursCard}>
               {hours.map((item, idx) => (
-                <View key={item.day} style={styles.hourRow}>
+                <View key={item.day} style={[styles.hourRow, layout.compact && { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
                   <Text style={styles.hourDayLabel}>{item.day}</Text>
 
                   {item.active ? (
@@ -657,8 +657,8 @@ export function EditarLocaisScreen({ navigation, route }) {
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 
@@ -673,6 +673,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    ...FORM_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 36,
@@ -681,6 +682,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     padding: 4,
   },
@@ -691,6 +695,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   placesRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
@@ -708,6 +713,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   placePillText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -768,20 +775,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     paddingHorizontal: 14,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     fontSize: 13.5,
     color: '#000000',
   },
   textArea: {
-    height: 80,
+    minHeight: 80,
     textAlignVertical: 'top',
     paddingTop: 10,
   },
   twoColsRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 12,
   },
   colFlex: {
+    flexBasis: 150,
+    minWidth: 0,
     flex: 1,
   },
   priceSegmentedContainer: {
@@ -810,7 +821,7 @@ const styles = StyleSheet.create({
   },
   miniMapCard: {
     backgroundColor: '#E8F5E9',
-    height: 95,
+    minHeight: 95,
     borderRadius: 16,
     marginTop: 6,
     position: 'relative',
@@ -897,8 +908,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#1E1848',
     borderRadius: 8,
-    width: 72,
-    height: 38,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    paddingVertical: 10,
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '600',
@@ -925,6 +938,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   repeatButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '700',
     color: '#22194D',
@@ -988,7 +1003,8 @@ const styles = StyleSheet.create({
     borderColor: '#1E1848',
     borderRadius: 10,
     paddingHorizontal: 12,
-    height: 40,
+    minHeight: 44,
+    paddingVertical: 10,
     fontSize: 13,
     color: '#000000',
   },
@@ -1005,6 +1021,7 @@ const styles = StyleSheet.create({
     color: '#4B5563',
   },
   footerRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 12,
     alignItems: 'center',
@@ -1021,11 +1038,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   discardButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
     color: '#6B7280',
   },
   publishButton: {
+    flexBasis: 150,
+    paddingHorizontal: 12,
     flex: 1,
     backgroundColor: '#958EA5',
     borderRadius: 999,
@@ -1033,6 +1054,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   publishButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 14.5,
     fontWeight: '800',
     color: '#FFFFFF',

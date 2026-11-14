@@ -23,6 +23,7 @@ for (const role of ['usuario', 'parceiro', 'admin']) {
     const ui = renderScreen(screen, 'PerfilScreen', { navigation: { navigate: name => navigations.push(name) } }, {
       [contextKey]: { useAuth: () => auth }, [serviceKey]: { createProfileService: () => ({ getEditableProfile: async () => ({ id_usuario: 'conta', nome: 'Maria', foto_url: 'https://exemplo.com/avatar.jpg' }) }) },
       '../services/supabase.js': { supabase: {} }, '../utils/profile.js': { profileDisplayName },
+      '../services/favoritosService': { favoritosService: { getLocaisFavoritos: async () => [] } },
       'expo-image-picker': { requestMediaLibraryPermissionsAsync: async () => ({ status: 'granted' }), launchImageLibraryAsync: async () => ({ assets: [{ uri: 'foto.jpg' }] }) },
       'expo-file-system/legacy': { getInfoAsync: async () => ({ exists: true, size: 100 }) },
       '../services/userService.js': { uploadUserAvatar: async (...args) => { uploads.push(args); return 'https://exemplo.com/avatar.jpg'; }, getContagemAvaliacoesUsuario: async () => 3 },
@@ -38,7 +39,7 @@ for (const role of ['usuario', 'parceiro', 'admin']) {
     const scroll = ui.nodes().find(n => n.type === 'ScrollView');
     assert.equal(scroll.props.contentContainerStyle[1].paddingBottom, 134);
     for (const n of ui.nodes().filter(n => n.type === 'TouchableOpacity')) assert.equal(typeof n.props.onPress, 'function');
-    for (const [label, route] of [['Editar perfil', 'EditarPerfil'], ['Rolês que quero visitar', 'Favoritos'],
+    for (const [label, route] of [['Editar perfil', 'EditarPerfil'], ['Rolês que quero visitar0', 'Favoritos'],
       ['Avaliações Feitas3', 'MinhasAvaliacoes'], ['Configurações', 'Configuracoes'], ['Ajuda e Suporte', 'AjudaSuporte'],
       ['Termos de uso', 'TermosUso'], ['Privacidade', 'Privacidade']]) {
       ui.button(label).props.onPress(); assert.equal(navigations.at(-1), route);

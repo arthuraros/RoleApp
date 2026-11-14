@@ -7,20 +7,25 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
+  useWindowDimensions,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
+import { HOME_CATEGORIES } from '../utils/homeFilters';
+import { PAGE_CONTENT, responsiveMetrics } from '../utils/responsive';
+import { homeCategoryLayout } from '../utils/homeCategoryLayout';
 
-// Exemplo de categorias com os mascotes
-const CATEGORIES = [
-  { id: '1', name: 'Comidas', icon: require('../../assets/pig_food.png') },
-  { id: '2', name: 'Festas', icon: require('../../assets/pig_party.png') },
-  { id: '3', name: 'Parques', icon: require('../../assets/pig_parks.png') },
-  { id: '4', name: 'Cinemas', icon: require('../../assets/pig_cinema.png') },
-  { id: '5', name: 'Cafés', icon: require('../../assets/pig_coffe.png') },
-  { id: '6', name: 'Eventos', icon: require('../../assets/pig_events.png') },
-];
+// Mesmos mascotes; IDs abaixo são apenas chaves da interface.
+const CATEGORY_ICONS = {
+  '1': require('../../assets/pig_food.png'),
+  '2': require('../../assets/pig_party.png'),
+  '3': require('../../assets/pig_parks.png'),
+  '4': require('../../assets/pig_cinema.png'),
+  '5': require('../../assets/pig_coffe.png'),
+  '6': require('../../assets/pig_events.png'),
+};
+const CATEGORIES = HOME_CATEGORIES.map(category => ({ ...category, icon: CATEGORY_ICONS[category.id] }));
 
 export function MainLayout({
   searchValue,
@@ -34,12 +39,53 @@ export function MainLayout({
   children,
   
 }) {
+  const dimensions = useWindowDimensions();
+  const layout = responsiveMetrics(dimensions);
+  const categoriesLayout = homeCategoryLayout({ ...dimensions, insets: useSafeAreaInsets() });
+
+  const renderCategory = cat => {
+    const isSelected = selectedCategory === cat.id;
+    return (
+      <TouchableOpacity
+        key={cat.id}
+        style={[
+          styles.categoryItem,
+          { width: categoriesLayout.itemWidth },
+        ]}
+        onPress={() => onSelectCategory?.(cat.id)}
+        accessibilityRole="button"
+        accessibilityLabel={`Filtrar por ${cat.name}`}
+        accessibilityHint={cat.icon ? undefined : 'Ilustração do mascote pendente'}
+        accessibilityState={{ selected: isSelected }}
+        activeOpacity={0.7}
+      >
+        <View style={[
+          styles.pigBadge,
+          categoriesLayout.tablet && styles.pigBadgeTablet,
+          isSelected && styles.pigBadgeSelected,
+        ]}>
+          {cat.icon ? (
+            <Image source={cat.icon} style={[
+              styles.pigImage,
+              categoriesLayout.tablet && styles.pigImageTablet,
+            ]} resizeMode="contain" accessible={false} />
+          ) : (
+            <Text style={styles.pendingArt} accessible={false}>Arte pendente</Text>
+          )}
+        </View>
+        <Text style={[styles.categoryText, isSelected && styles.categoryTextSelected]}>
+          {cat.name}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header Roxo */}
       <View style={styles.header}>
         {/* Pesquisa e filtros lado a lado */}
-        <View style={styles.searchRow}>
+        <View style={[styles.searchRow, layout.compact && { flexWrap: 'wrap' }]}>
           <View style={styles.searchBar}>
             <Feather name="search" size={18} color="#64748B" style={styles.searchIcon} />
             <TextInput
@@ -62,51 +108,21 @@ export function MainLayout({
       {/* Conteúdo com Fundo Branco */}
       <View style={styles.body}>
           <View style={styles.contentContainer}>
-          {/* Carrossel de Mascotes / Categorias */}
-         {/* Carrossel de Mascotes / Categorias */}
-{!hideCategories && (
-  <ScrollView
-    horizontal
-    style={styles.categoriesContainer}
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={styles.categoriesScroll}
-  >
-    {CATEGORIES.map((cat) => {
-      const isSelected = selectedCategory === cat.id;
-
-      return (
-        <TouchableOpacity
-          key={cat.id}
-          style={styles.categoryItem}
-          onPress={() => onSelectCategory && onSelectCategory(cat.id)}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.pigBadge,
-              isSelected && styles.pigBadgeSelected,
-            ]}
-          >
-            <Image
-              source={cat.icon}
-              style={styles.pigImage}
-              resizeMode="contain"
-            />
-          </View>
-
-          <Text
-            style={[
-              styles.categoryText,
-              isSelected && styles.categoryTextSelected,
-            ]}
-          >
-            {cat.name}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </ScrollView>
-)}
+          {!hideCategories && (
+            <ScrollView
+              key="category-carousel"
+              horizontal
+              style={styles.categoriesContainer}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.categoriesScroll,
+                { gap: categoriesLayout.gap, paddingHorizontal: categoriesLayout.paddingHorizontal },
+              ]}
+              accessibilityLabel="Categorias de rolê"
+            >
+              {CATEGORIES.map(renderCategory)}
+            </ScrollView>
+          )}
 
           {/* Children da Tela (HomeScreen, FavoritosScreen, etc.) */}
           {children}
@@ -123,6 +139,7 @@ const styles = StyleSheet.create({
   },// Roxo escuro do header
     contentContainer: {
     flex: 1,
+    ...PAGE_CONTENT,
   },
   categoriesContainer: {
   flexGrow: 0,
@@ -132,21 +149,23 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 12 : 8,
     paddingBottom: 16,
   },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  searchRow: { ...PAGE_CONTENT, flexDirection: 'row', alignItems: 'center', gap: 10 },
   searchBar: {
     flex: 1,
+    minWidth: 120,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F1F5F9',
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 42,
+    minHeight: 44,
   },
   searchIcon: {
     marginRight: 8,
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 14,
     color: '#0F172A',
   },
@@ -163,7 +182,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     paddingHorizontal: 10,
-    height: 38,
+    minHeight: 44,
   },
   statLabel: {
     fontSize: 12,
@@ -186,7 +205,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#3B1A66',
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 38,
+    minHeight: 44,
+    paddingVertical: 8,
     gap: 4,
   },
   filterText: {
@@ -202,15 +222,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 24,
   },
-  categoriesScroll: { paddingHorizontal: 8, paddingVertical: 10, gap: 10 },
-  categoryItem: { alignItems: 'center', width: 58 },
-  pigBadge: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  categoriesScroll: { paddingVertical: 10 },
+  categoryItem: { alignItems: 'center', minWidth: 44, paddingHorizontal: 4, paddingVertical: 4, minHeight: 88 },
+  pigBadge: { width: 56, minHeight: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
+  pigBadgeTablet: { width: 68, minHeight: 68, borderRadius: 34 },
   pigBadgeSelected: {
     borderWidth: 2,
     borderColor: '#3B1A66',
+    backgroundColor: '#F0EFF8',
   },
   pigImage: { width: 52, height: 52 },
-  categoryText: { fontSize: 10, color: '#0F172A', fontWeight: '700', marginTop: 4, textAlign: 'center' },
+  pigImageTablet: { width: 64, height: 64 },
+  pendingArt: { fontSize: 10, color: '#64748B', textAlign: 'center', padding: 4 },
+  categoryText: { fontSize: 12, color: '#0F172A', fontWeight: '700', marginTop: 4, textAlign: 'center', alignSelf: 'stretch' },
   categoryTextSelected: {
     color: '#1E1B4B',
     fontWeight: '700',

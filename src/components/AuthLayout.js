@@ -1,15 +1,15 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from './KeyboardForm';
 import React from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { responsiveMetrics } from '../utils/responsive';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 
 export function AuthLayout({
@@ -18,6 +18,8 @@ export function AuthLayout({
   error,
   children,
 }) {
+  const dimensions = useWindowDimensions();
+  const layout = responsiveMetrics({ ...dimensions, insets: useSafeAreaInsets() });
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -27,19 +29,18 @@ export function AuthLayout({
       />
 
       <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        <KeyboardViewport
           style={styles.keyboardAvoid}
         >
-          <ScrollView
+          <KeyboardAwareScrollView
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <View style={styles.card}>
+            <View style={[styles.card, { width: layout.authWidth }]}>
               <View style={styles.brandRow}>
                 <View style={styles.mascotBadge}>
-                  <Image source={require('../../assets/logoName.png')} style={styles.mascotIcon}/>
+                  <Image source={require('../../assets/logoName.png')} style={[styles.mascotIcon, { width: layout.logoWidth }]} resizeMode="contain" />
                 </View>
               </View>
 
@@ -55,8 +56,8 @@ export function AuthLayout({
 
               {children}
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+          </KeyboardAwareScrollView>
+        </KeyboardViewport>
       </SafeAreaView>
     </View>
   );
@@ -75,7 +76,8 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 18,
+    alignItems: 'center',
+    paddingHorizontal: 16,
     paddingVertical: 24,
   },
   card: {
@@ -98,7 +100,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   mascotBadge: {
-    marginLeft: 8,
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',

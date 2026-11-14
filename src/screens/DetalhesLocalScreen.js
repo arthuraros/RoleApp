@@ -1,15 +1,16 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, Image, Linking, ScrollView, StyleSheet,
-  Text, TouchableOpacity, TextInput, View, useWindowDimensions,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+  Text, TouchableOpacity, TextInput, View, useWindowDimensions, } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { locaisService } from '../services/locaisService';
 import { supabase } from '../services/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
+import { PAGE_CONTENT, responsiveMetrics } from '../utils/responsive';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4';
 const MENU_CATEGORIES = ['Entradas', 'Pratos principais', 'Burguers', 'Sobremesas', 'Bebidas'];
@@ -22,7 +23,7 @@ function money(value) {
 
 export function DetalhesLocalScreen({ route, navigation }) {
   const { idLocal, local: initialLocal } = route.params || {};
-  const { width } = useWindowDimensions();
+  const dimensions = useWindowDimensions();
   const { user } = useAuth();
   const userId = user?.id_usuario || user?.id;
   const [local, setLocal] = useState(initialLocal || null);
@@ -39,7 +40,8 @@ export function DetalhesLocalScreen({ route, navigation }) {
   const [comentario, setComentario] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [filtroNota, setFiltroNota] = useState(null);
-  const menuWidth = Math.min(width - 60, 352);
+  const menuWidth = responsiveMetrics({ ...dimensions, insets: useSafeAreaInsets() }).menuWidth;
+  useEffect(() => { setActiveMenu(0); }, [menuWidth]);
 
   useEffect(() => {
     let active = true;
@@ -158,8 +160,9 @@ export function DetalhesLocalScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardViewport style={{ flex: 1 }}>
+      <KeyboardAwareScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.heroWrap}>
           <Image source={{ uri: local?.imagem_url || FALLBACK_IMAGE }} style={styles.hero} resizeMode="cover" />
           <TouchableOpacity style={styles.back} onPress={() => navigation.goBack()} accessibilityLabel="Voltar">
@@ -194,9 +197,6 @@ export function DetalhesLocalScreen({ route, navigation }) {
                   <Text style={styles.mapPreviewAddress} numberOfLines={2}>{[local.endereco, local.bairro, local.cidade_uf].filter(Boolean).join(', ') || 'Endereço não cadastrado'}</Text></View>
                 <Feather name="external-link" size={19} color="#1E1848" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.mapButton} onPress={openMap} accessibilityRole="link">
-                <Text style={styles.mapText}>Abrir no Mapa</Text>
-              </TouchableOpacity>
             </View>
             <View style={[styles.menuBox, { width: menuWidth }]}>
               <LinearGradient colors={['#1E1848', '#483AAE', '#C51212']} start={{x: 0,y: 0}} end={{x: 1,y: 0}} style={styles.menuHeader}>
@@ -204,7 +204,7 @@ export function DetalhesLocalScreen({ route, navigation }) {
               </LinearGradient>
               <View style={styles.menuBody}>
                 <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false}
-                  key={String(idLocal || 'sem-local')}
+                  key={`${idLocal || 'sem-local'}-${menuWidth}`}
                   onMomentumScrollEnd={(e) => setActiveMenu(Math.max(0, Math.min(categoriasExibidas.length - 1, Math.round(e.nativeEvent.contentOffset.x / (menuWidth - 8)))))}
                   style={{ flexGrow: 0 }}>
                   {categoriasExibidas.map((cat, index) => {
@@ -299,23 +299,24 @@ export function DetalhesLocalScreen({ route, navigation }) {
             </View>
           </>
         ) : !loading ? <Text style={styles.error}>Local não encontrado.</Text> : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#FFFFFF' },
-  scroll: { paddingBottom: 40 },
+  scroll: { ...PAGE_CONTENT, paddingBottom: 40 },
   heroWrap: { height: 225, backgroundColor: '#EAE8F4', position: 'relative' },
   hero: { width: '100%', height: '100%' },
-  back: { position: 'absolute', left: 15, top: 12, width: 37, height: 37, borderRadius: 19, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', elevation: 3 },
+  back: { position: 'absolute', left: 15, top: 12, width: 44, height: 44, borderRadius: 19, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center', elevation: 3 },
   loader: { marginVertical: 12 },
   error: { margin: 20, color: '#C1121F' },
-  infoBlock: { paddingHorizontal: 9, paddingTop: 6 },
+  infoBlock: { paddingHorizontal: 9, paddingTop: 6, paddingBottom: 22 },
   title: { fontSize: 32, fontWeight: '800', color: '#080808', marginBottom: 6 },
-  addressAndPrice: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', minHeight: 43, gap: 4 },
-  addressWrap: { flex: 1, flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 3, marginRight: 5 },
+  addressAndPrice: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', minHeight: 43, gap: 8 },
+  addressWrap: { flexGrow: 1, flexBasis: 180, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 3, marginRight: 5 },
   address: { flex: 1, fontSize: 17, lineHeight: 22, color: '#676767' },
   priceWrap: { alignItems: 'flex-end', minWidth: 85 },
   price: { fontSize: 23, fontWeight: '700', color: '#00A63E' },
@@ -323,10 +324,8 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1, marginBottom: 14 },
   ratingText: { fontSize: 18, color: '#676767' },
   description: { fontSize: 15, lineHeight: 19, color: '#0A0A0A', paddingHorizontal: 9, marginTop: 22, minHeight: 130 },
-  mapButton: { alignSelf: 'center', marginTop: 18, marginBottom: 22 },
-  mapText: { color: '#1E1848', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
-  menuBox: { alignSelf: 'center', height: 529, borderRadius: 16, borderWidth: 3, borderColor: '#483AAE', overflow: 'hidden', backgroundColor: '#FFFFFF', elevation: 4 },
-  menuHeader: { height: 61, alignItems: 'center', justifyContent: 'center' },
+  menuBox: { alignSelf: 'center', minHeight: 529, borderRadius: 16, borderWidth: 3, borderColor: '#483AAE', overflow: 'hidden', backgroundColor: '#FFFFFF', elevation: 4 },
+  menuHeader: { minHeight: 61, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
   menuTitle: { color: '#FFFFFF', fontSize: 30, fontWeight: '800' },
   menuBody: { backgroundColor: '#FFFFFF', borderBottomLeftRadius: 13, borderBottomRightRadius: 13, flex: 1, paddingTop: 10 },
   categoryTitle: { textAlign: 'center', fontSize: 23, color: '#1E2939', fontWeight: '800' },
@@ -342,27 +341,27 @@ const styles = StyleSheet.create({
   avaliacoesSecao: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 24, gap: 16 },
   avaliacoesTitulo: { textAlign: 'center', color: '#1E1848', fontSize: 32, fontWeight: '800', fontStyle: 'italic', marginBottom: 0 },
   avaliacaoPainel: { borderWidth: 3, borderColor: '#483AAE', borderRadius: 16, padding: 16, backgroundColor: '#FFFFFF', gap: 12, elevation: 3 },
-  resumoLinha: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  resumoLinha: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'center' },
   mediaNumero: { fontSize: 30, fontWeight: '700', color: '#1E1848' },
   resumoLegenda: { fontSize: 13, color: '#6A7282', lineHeight: 20 },
   resumoEstrelas: { alignItems: 'flex-end' },
   estrelasDouradas: { color: '#E6AA20', fontSize: 16, letterSpacing: 1 },
-  filtrosNotas: { flexDirection: 'row', justifyContent: 'space-between', gap: 7 },
-  filtroBotao: { flex: 1, height: 28, borderRadius: 11, borderWidth: 1, borderColor: '#1E1848', backgroundColor: '#E6E6E6', justifyContent: 'center', alignItems: 'center' },
+  filtrosNotas: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 7 },
+  filtroBotao: { flexGrow: 1, flexBasis: 44, minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: '#1E1848', backgroundColor: '#E6E6E6', justifyContent: 'center', alignItems: 'center' },
   filtroAtivo: { backgroundColor: '#D7D1F4' },
   filtroTexto: { fontSize: 12, fontWeight: '600', color: '#1E1848' },
   painelTitulo: { fontSize: 18, fontWeight: '700', fontStyle: 'italic', color: '#1E1848' },
   usuarioLinha: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatarSimbolo: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EAE8F4', justifyContent: 'center', alignItems: 'center' },
-  usuarioNome: { fontSize: 14, fontWeight: '600', color: '#1E2939' },
+  usuarioNome: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: '#1E2939' },
   usuarioLegenda: { fontSize: 12, color: '#6A7282', marginTop: 4 },
-  escolherNota: { flexDirection: 'row', gap: 7 },
-  notaBotao: { width: 40, height: 40, borderRadius: 11, borderWidth: 1, borderColor: '#1E1848', backgroundColor: '#E6E6E6', alignItems: 'center', justifyContent: 'center' },
+  escolherNota: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  notaBotao: { minWidth: 44, minHeight: 44, padding: 8, borderRadius: 11, borderWidth: 1, borderColor: '#1E1848', backgroundColor: '#E6E6E6', alignItems: 'center', justifyContent: 'center' },
   notaAtiva: { backgroundColor: '#483AAE' },
   notaTexto: { color: '#1E1848', fontSize: 14, fontWeight: '600' },
   notaTextoAtiva: { color: '#FFFFFF' },
-  comentarioInput: { height: 96, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, fontSize: 14, color: '#1E2939' },
-  botaoEnviar: { height: 44, borderRadius: 12, borderWidth: 2, borderColor: '#483AAE', alignItems: 'center', justifyContent: 'center' },
+  comentarioInput: { minHeight: 96, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, fontSize: 14, color: '#1E2939' },
+  botaoEnviar: { minHeight: 44, padding: 12, borderRadius: 12, borderWidth: 2, borderColor: '#483AAE', alignItems: 'center', justifyContent: 'center' },
   botaoEnviarTexto: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   mensagemVazia: { color: '#6A7282', fontSize: 14, paddingVertical: 12 },
   comentarioCard: { borderWidth: 1, borderColor: '#E5E7EB', padding: 12, borderRadius: 12, gap: 10 },

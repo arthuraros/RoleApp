@@ -23,6 +23,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase.js';
+import { favoritosService } from '../services/favoritosService';
+import { FORM_CONTENT } from '../utils/responsive';
 
 const MAX_FILE_SIZE_MB = 5;
 const profileService = createProfileService(supabase);
@@ -42,8 +44,11 @@ export function PerfilScreen({ navigation }) {
   const [tipoOperacao, setTipoOperacao] = useState('adicionar');
   const [inputValorSaldo, setInputValorSaldo] = useState('');
   const [saldoVisivel, setSaldoVisivel] = useState(true);
+  const [favorites, setFavorites] = useState({ owner: null, count: null, error: false });
 
   const userId = user?.id_usuario || user?.id;
+  const favoritesCount = !userId ? 0 : favorites.owner === userId ? favorites.count : null;
+  const favoritesError = favorites.owner === userId && favorites.error;
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -54,6 +59,7 @@ export function PerfilScreen({ navigation }) {
     setSaldo(0);
     setModalSaldoVisible(false);
     setInputValorSaldo('');
+    setFavorites({ owner: userId, count: null, error: false });
     if (userId) {
       profileService.getEditableProfile().then(data => {
         if (!active) return;
@@ -66,6 +72,11 @@ export function PerfilScreen({ navigation }) {
       getContagemAvaliacoesUsuario(userId).then(count => {
         if (active) setReviewsCount(count);
       }).catch(() => { if (active) setReviewsCount(null); });
+      favoritosService.getLocaisFavoritos(userId).then(locais => {
+        if (active) setFavorites({ owner: userId, count: locais.length, error: false });
+      }).catch(() => {
+        if (active) setFavorites({ owner: userId, count: null, error: true });
+      });
     }
     return () => { active = false; };
   }, [userId]));
@@ -256,6 +267,10 @@ export function PerfilScreen({ navigation }) {
                   resizeMode="contain"
                 />
                 <Text style={styles.wishlistLabel}>Rolês que quero visitar</Text>
+                <Text style={styles.wishlistCount} accessibilityLiveRegion="polite"
+                  accessibilityLabel={favoritesError ? 'Contagem de favoritos indisponível' : favoritesCount === null ? 'Carregando favoritos' : `${favoritesCount} ${favoritesCount === 1 ? 'local favorito' : 'locais favoritos'}`}>
+                  {favoritesError ? 'Indisponível' : favoritesCount ?? '—'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.card, styles.visitedCard]} onPress={() => navigation.navigate('RolesScreen')}>
                 <Ionicons name="map-outline" size={26} color="#4F159B" />
@@ -443,7 +458,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   topGradientBackground: { position: 'absolute', top: 0, left: 0, right: 0, height: 280 },
   safeArea: { flex: 1 },
-  scrollContent: { paddingBottom: 16 },
+  scrollContent: { ...FORM_CONTENT, paddingBottom: 16 },
   header: { alignItems: 'center', paddingBottom: 20, position: 'relative' },
   avatarWrapper: { position: 'relative', marginBottom: 8 },
   avatarContainer: {
@@ -472,17 +487,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },
-  userName: { fontSize: 20, fontWeight: '700', color: '#0A0A0A' },
-  userEmail: { fontSize: 13, color: '#0A0A0A', marginTop: 2 },
+  userName: { fontSize: 20, fontWeight: '700', color: '#0A0A0A', textAlign: 'center', paddingHorizontal: 16 },
+  userEmail: { fontSize: 13, color: '#0A0A0A', marginTop: 2, textAlign: 'center', paddingHorizontal: 16 },
   contentCard: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
   topCardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  card: { width: '48%', borderWidth: 1, borderColor: '#1E1848', borderRadius: 16, padding: 12, height: 90 },
+  card: { width: '48%', borderWidth: 1, borderColor: '#1E1848', borderRadius: 16, padding: 12, minHeight: 90 },
   wishlistCard: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: { width: 40, height: 40, marginRight: 8 },
-  wishlistLabel: { fontSize: 12, fontWeight: '600', color: '#0F172A', flexShrink: 1 },
-  actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  wishlistLabel: { fontSize: 12, fontWeight: '600', color: '#0F172A', flex: 1 },
+  wishlistCount: { fontSize: 14, fontWeight: '700', color: '#483AAE', marginLeft: 8, flexShrink: 1 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', marginBottom: 16 },
   actionPill: {
-    width: '48%',
+    flexBasis: 160,
+    flexGrow: 1,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: '#3B1A66',
     borderRadius: 12,
@@ -492,10 +510,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  actionText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
+  actionText: { fontSize: 12, fontWeight: '600', color: '#0F172A', flexShrink: 1 },
   actionBadge: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   menuList: { gap: 10, marginBottom: 20 },
-  menuItem: { borderWidth: 1, borderColor: '#3B1A66', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
+  menuItem: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#3B1A66', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
   menuText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   logoutButton: { backgroundColor: '#DC2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   logoutText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },

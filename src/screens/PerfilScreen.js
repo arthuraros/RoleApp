@@ -266,7 +266,7 @@ export function PerfilScreen({ navigation }) {
                   style={styles.cardIcon}
                   resizeMode="contain"
                 />
-                <Text style={styles.wishlistLabel}>Rolês que quero visitar</Text>
+                <Text style={styles.wishlistLabel}>Locais Salvos</Text>
                 <Text style={styles.wishlistCount} accessibilityLiveRegion="polite"
                   accessibilityLabel={favoritesError ? 'Contagem de favoritos indisponível' : favoritesCount === null ? 'Carregando favoritos' : `${favoritesCount} ${favoritesCount === 1 ? 'local favorito' : 'locais favoritos'}`}>
                   {favoritesError ? 'Indisponível' : favoritesCount ?? '—'}

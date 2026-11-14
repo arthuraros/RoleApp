@@ -1,6 +1,6 @@
 import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Linking, useWindowDimensions, } from 'react-native';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal, TextInput, Animated, Linking, useWindowDimensions, PanResponder, } from 'react-native';
 import { locaisService } from '../services/locaisService';
 import { parceiroService } from '../services/parceiroService';
 import { categoriasService } from '../services/categoriasService';
@@ -68,20 +68,45 @@ export function HomeScreen({ navigation }) {
   
   const [tiposRolde, setTiposRolde] = useState([]);
 
+  // Larguras das barras de slider para cálculo de toque
+  const [priceBarWidth, setPriceBarWidth] = useState(0);
+  const [distanceBarWidth, setDistanceBarWidth] = useState(0);
+
   const slideAnim = useRef(new Animated.Value(-dimensions.height)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Funções de atualização por Slider
+  const handlePriceSliderTouch = (evt) => {
+    if (!priceBarWidth) return;
+    const touchX = evt.nativeEvent.locationX;
+    const percentage = Math.max(0, Math.min(1, touchX / priceBarWidth));
+    const calculatedPrice = Math.round(percentage * 200); // Max R$ 200,00
+    setPrice(calculatedPrice > 0 ? calculatedPrice.toString() : '');
+  };
+
+  const handleDistanceSliderTouch = (evt) => {
+    if (!distanceBarWidth) return;
+    const touchX = evt.nativeEvent.locationX;
+    const percentage = Math.max(0, Math.min(1, touchX / distanceBarWidth));
+    const calculatedDistance = Math.round(percentage * 50); // Max 50 KM
+    setDistance(calculatedDistance > 0 ? calculatedDistance.toString() : '');
+  };
+
+  // Cálculo da posição do indicador (thumb) com base no input atual
+  const priceProgress = Math.min(1, Math.max(0, (Number(price) || 0) / 200));
+  const distanceProgress = Math.min(1, Math.max(0, (Number(distance) || 0) / 50));
 
   const handleOpenFilter = () => {
     setIsFilterVisible(true);
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 1500,
+        duration: 800,
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 800,
+        duration: 500,
         useNativeDriver: true,
       })
     ]).start();
@@ -91,12 +116,12 @@ export function HomeScreen({ navigation }) {
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: -dimensions.height,
-        duration: 1000,
+        duration: 600,
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 600,
+        duration: 400,
         useNativeDriver: true,
       })
     ]).start(() => {
@@ -559,7 +584,7 @@ ListEmptyComponent={
         )}
       />
 
-      {/* Modal de Filtros Avançados Corrigido */}
+      {/* Modal de Filtros Avançados com Sliders Funcionais */}
       <Modal visible={isFilterVisible} transparent={true} animationType="none" onRequestClose={handleCloseFilter}>
         <SafeAreaView style={{ flex: 1 }}>
         <KeyboardViewport style={{ flex: 1 }}>
@@ -588,12 +613,21 @@ ListEmptyComponent={
                       />
                     </View>
                   </View>
-                  <View style={styles.sliderBar}>
-                    <View style={styles.sliderThumb} />
-                  </View>
+                  
+                  {/* Slider de Preço Interativo */}
+                  <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={styles.sliderBar}
+                    onLayout={(e) => setPriceBarWidth(e.nativeEvent.layout.width)}
+                    onPress={handlePriceSliderTouch}
+                  >
+                    <View style={[styles.sliderProgressActive, { width: `${priceProgress * 100}%` }]} />
+                    <View style={[styles.sliderThumb, { left: `${priceProgress * 100}%` }]} />
+                  </TouchableOpacity>
+
                   <View style={styles.sliderLabels}>
-                    <Text style={styles.limitLabel}>MIN</Text>
-                    <Text style={styles.limitLabel}>MAX</Text>
+                    <Text style={styles.limitLabel}>R$ 0</Text>
+                    <Text style={styles.limitLabel}>R$ 200</Text>
                   </View>
 
                   {/* Bloco de Distância */}
@@ -611,12 +645,21 @@ ListEmptyComponent={
                       />
                     </View>
                   </View>
-                  <View style={styles.sliderBar}>
-                    <View style={styles.sliderThumb} />
-                  </View>
+
+                  {/* Slider de Distância Interativo */}
+                  <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={styles.sliderBar}
+                    onLayout={(e) => setDistanceBarWidth(e.nativeEvent.layout.width)}
+                    onPress={handleDistanceSliderTouch}
+                  >
+                    <View style={[styles.sliderProgressActive, { width: `${distanceProgress * 100}%` }]} />
+                    <View style={[styles.sliderThumb, { left: `${distanceProgress * 100}%` }]} />
+                  </TouchableOpacity>
+
                   <View style={styles.sliderLabels}>
-                    <Text style={styles.limitLabel}>MIN</Text>
-                    <Text style={styles.limitLabel}>MAX</Text>
+                    <Text style={styles.limitLabel}>0 KM</Text>
+                    <Text style={styles.limitLabel}>50 KM</Text>
                   </View>
 
                   {/* Dropdown: Tipo de Rolê */}
@@ -655,7 +698,6 @@ ListEmptyComponent={
                     </View>
                   )}
 
-
                   {/* Botões de Ação */}
                   <TouchableOpacity 
                     style={styles.applyButton} 
@@ -681,6 +723,7 @@ ListEmptyComponent={
   );
 }
 
+// Estilos complementares adicionados para o preenchimento da barra ativa
 const styles = StyleSheet.create({
   activeCategory: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginHorizontal: 16, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: '#F0EFF8' },
   activeCategoryText: { color: '#1E1848', fontWeight: '700', flexShrink: 1 },
@@ -907,8 +950,16 @@ const styles = StyleSheet.create({
   inputContainer: { flexDirection: 'row', alignItems: 'center'},
   currency: { fontSize: 14, fontWeight: '700', color: '#1E1848', marginRight: 4 },
   inputBox: { fontSize: 16, fontWeight: '700', color: '#1E1848', minWidth: 60, textAlign: 'right', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#483AAE', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4  },
-  sliderBar: { height: 6, backgroundColor: '#483AAE', borderRadius: 3, marginVertical: 8, position: 'relative', justifyContent: 'center' },
+  sliderBar: { height: 16, backgroundColor: '#483AAE', borderRadius: 3, marginVertical: 8, position: 'relative', justifyContent: 'center' },
   sliderThumb: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#C51212', position: 'absolute', alignSelf: 'center' },
+  sliderProgressActive: {
+    position: 'absolute',
+    height: 4,
+    backgroundColor: '#1E1B4B',
+    borderRadius: 2,
+    top: 0,
+    left: 0,
+  },
   sliderLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   limitLabel: { fontSize: 12, fontWeight: '700', color: '#1E1848' },
   dropdownHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,59 +13,73 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from '@react-navigation/native';
+import { createProfileService } from '../services/profileService.js';
+import { profileDisplayName } from '../utils/profile.js';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js'; // Importado getUserReviewsCount
+import { uploadUserAvatar, getContagemAvaliacoesUsuario } from '../services/userService.js';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabase.js';
+import { favoritosService } from '../services/favoritosService';
+import { FORM_CONTENT } from '../utils/responsive';
 
 const MAX_FILE_SIZE_MB = 5;
+const profileService = createProfileService(supabase);
 
 export function PerfilScreen({ navigation }) {
-  const { user, logout, updateUserAvatar, isAdmin, refreshProfile, profileError } = useAuth();
+  const { user, logout, isAdmin, isPartner, profileError } = useAuth();
   
+  const tabBarHeight = useBottomTabBarHeight();
+  const [accountProfile, setAccountProfile] = useState(null);
+  const [accountError, setAccountError] = useState(false);
   const [avatarUri, setAvatarUri] = useState(null);
   const [loadingImage, setLoadingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [reviewsCount, setReviewsCount] = useState(0);
-  const [saldo, setSaldo] = useState(0); // Estado para o saldo do usuário
+  const [reviewsCount, setReviewsCount] = useState(null); // Estado para guardar a quantidade de avaliações
+  const [saldo, setSaldo] = useState(0);
   const [modalSaldoVisible, setModalSaldoVisible] = useState(false);
-  const [tipoOperacao, setTipoOperacao] = useState('adicionar'); // 'adicionar' ou 'remover'
+  const [tipoOperacao, setTipoOperacao] = useState('adicionar');
   const [inputValorSaldo, setInputValorSaldo] = useState('');
   const [saldoVisivel, setSaldoVisivel] = useState(true);
+  const [favorites, setFavorites] = useState({ owner: null, count: null, error: false });
 
   const userId = user?.id_usuario || user?.id;
+  const favoritesCount = !userId ? 0 : favorites.owner === userId ? favorites.count : null;
+  const favoritesError = favorites.owner === userId && favorites.error;
 
-  // Busca do perfil (incluindo saldo e foto)
-  const fetchUserProfile = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('foto_url, saldo') // Busca o saldo junto com a foto
-        .eq('id_usuario', userId)
-        .single();
-
-      if (error) {
-        console.error('Erro ao buscar dados do usuário:', error.message);
-        return;
-      }
-
-      if (data?.foto_url) {
-        const urlWithTimestamp = `${data.foto_url}?t=${new Date().getTime()}`;
-        setAvatarUri(urlWithTimestamp);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setAccountProfile(null);
+    setAvatarUri(null);
+    setReviewsCount(null);
+    setAccountError(false);
+    setSaldo(0);
+    setModalSaldoVisible(false);
+    setInputValorSaldo('');
+    setFavorites({ owner: userId, count: null, error: false });
+    if (userId) {
+      profileService.getEditableProfile().then(data => {
+        if (!active) return;
+        setAccountProfile(data);
+        setSaldo(Number(data?.saldo ?? 0));
+        const photoUrl = data?.foto_url;
+        setAvatarUri(photoUrl ? `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}t=${Date.now()}` : null);
         setImageError(false);
-      }
-
-      if (data?.saldo !== undefined) {
-        setSaldo(Number(data.saldo));
-      }
-    } catch (err) {
-      console.error('Erro na requisição do perfil:', err);
+      }).catch(() => { if (active) setAccountError(true); });
+      getContagemAvaliacoesUsuario(userId).then(count => {
+        if (active) setReviewsCount(count);
+      }).catch(() => { if (active) setReviewsCount(null); });
+      favoritosService.getLocaisFavoritos(userId).then(locais => {
+        if (active) setFavorites({ owner: userId, count: locais.length, error: false });
+      }).catch(() => {
+        if (active) setFavorites({ owner: userId, count: null, error: true });
+      });
     }
-  }, [userId]);
+    return () => { active = false; };
+  }, [userId]));
 
   // Função para alterar o saldo (aumentar ou diminuir)
   const handleAlterarSaldo = async (valorDelta) => {
@@ -119,76 +133,40 @@ export function PerfilScreen({ navigation }) {
     }
   };
 
-  // Busca da quantidade de avaliações feitas pelo usuário
-  const fetchReviewsCount = useCallback(async () => {
-    if (!userId) return;
 
-    try {
-      const count = await getContagemAvaliacoesUsuario(userId);
-      setReviewsCount(count);
-    } catch (err) {
-      console.error('Erro ao buscar quantidade de avaliações:', err);
-    }
-  }, [userId]);
-
-  useEffect(() => {
-    fetchUserProfile();
-    fetchReviewsCount();
-  }, [fetchUserProfile, fetchReviewsCount]);
-
-  const handleSelectAvatar = async () => {
+  const handleSelectAvatar = () => {
     Alert.alert(
-      'Alterar Foto de Perfil',
+      'Alterar foto de perfil',
       'Escolha de onde deseja obter a imagem:',
       [
-        {
-          text: 'Tirar Foto',
-          onPress: async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert('Permissão necessária', 'Precisamos de acesso à sua câmera.');
-              return;
-            }
-
-            const result = await ImagePicker.launchCameraAsync({
-              mediaTypes: 'images',
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.8,
-            });
-
-            if (!result.canceled && result.assets?.[0]?.uri) {
-              await processarEEnviarImagem(result.assets[0].uri);
-            }
-          },
-        },
-        {
-          text: 'Escolher da Galeria',
-          onPress: async () => {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert('Permissão necessária', 'Precisamos de acesso às suas fotos.');
-              return;
-            }
-
-            const result = await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: 'images',
-              allowsEditing: true,
-              aspect: [1, 1],
-              quality: 0.8,
-            });
-
-            if (!result.canceled && result.assets?.[0]?.uri) {
-              await processarEEnviarImagem(result.assets[0].uri);
-            }
-          },
-        },
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
+        { text: 'Tirar foto', onPress: () => selecionarImagem(true) },
+        { text: 'Escolher da galeria', onPress: () => selecionarImagem(false) },
+        { text: 'Cancelar', style: 'cancel' },
       ]
     );
+  };
+
+  const selecionarImagem = async (camera) => {
+    try {
+      const { status } = camera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão necessária', camera
+          ? 'Autorize o acesso à câmera para tirar uma foto.'
+          : 'Autorize o acesso às fotos para escolher uma imagem.');
+        return;
+      }
+      const options = { mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.8 };
+      const result = camera
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        await processarEEnviarImagem(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Imagem indisponível', 'Não foi possível abrir a câmera ou a galeria. Tente novamente.');
+    }
   };
 
   // Função auxiliar para validar o tamanho e enviar o arquivo
@@ -221,10 +199,6 @@ export function PerfilScreen({ navigation }) {
       setAvatarUri(freshUrl);
       setImageError(false);
 
-      if (typeof updateUserAvatar === 'function') {
-        await updateUserAvatar(freshUrl);
-      }
-
       Alert.alert('Sucesso', 'Sua foto de perfil foi atualizada com sucesso!');
     } catch (error) {
       console.error('Erro no upload de avatar:', error);
@@ -235,19 +209,19 @@ export function PerfilScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <LinearGradient
         colors={['#1E1848', '#483AAE', '#FFFFFF']}
         locations={[0, 0.4, 0.8]}
         style={styles.topGradientBackground}
       />
 
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={styles.safeArea}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]} showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            
             <TouchableOpacity
               style={styles.avatarWrapper}
+              accessibilityLabel="Alterar foto do perfil"
               onPress={handleSelectAvatar}
               activeOpacity={0.8}
               disabled={loadingImage}
@@ -279,28 +253,28 @@ export function PerfilScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.userName}>{user?.nome || user?.name || 'Usuário'}</Text>
-            <Text style={styles.userEmail}>{user?.email || 'usuario@email.com'}</Text>
+            <Text style={styles.userName}>{profileDisplayName(accountProfile, user)}</Text>
+            <Text style={styles.userEmail}>{user?.email || 'E-mail não disponível'}</Text>
+            {accountError && <Text>Não foi possível carregar seu nome e sua foto.</Text>}
           </View>
 
           <View style={styles.contentCard}>
             <View style={styles.topCardsRow}>
-              <View style={[styles.card, styles.visitedCard]}>
-                <Text style={styles.visitedCount}>24</Text>
-                <Text style={styles.cardLabel}>Rolês Visitados</Text>
-              </View>
-
-              <TouchableOpacity 
-                style={[styles.card, styles.wishlistCard]}
-                onPress={() => navigation.navigate('RolesScreen')}
-                activeOpacity={0.8}
-              >
+              <TouchableOpacity style={[styles.card, styles.wishlistCard]} onPress={() => navigation.navigate('Favoritos')}>
                 <Image
                   source={require('../../assets/bookmark_symbol.png')}
                   style={styles.cardIcon}
                   resizeMode="contain"
                 />
                 <Text style={styles.wishlistLabel}>Rolês que quero visitar</Text>
+                <Text style={styles.wishlistCount} accessibilityLiveRegion="polite"
+                  accessibilityLabel={favoritesError ? 'Contagem de favoritos indisponível' : favoritesCount === null ? 'Carregando favoritos' : `${favoritesCount} ${favoritesCount === 1 ? 'local favorito' : 'locais favoritos'}`}>
+                  {favoritesError ? 'Indisponível' : favoritesCount ?? '—'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.card, styles.visitedCard]} onPress={() => navigation.navigate('RolesScreen')}>
+                <Ionicons name="map-outline" size={26} color="#4F159B" />
+                <Text style={styles.cardLabel}>Meus rolês</Text>
               </TouchableOpacity>
             </View>
 
@@ -360,30 +334,66 @@ export function PerfilScreen({ navigation }) {
             </View>
 
             <View style={styles.actionsRow}>
-              <TouchableOpacity style={styles.actionPill} onPress={handleSelectAvatar}>
+              <TouchableOpacity style={styles.actionPill} onPress={() => navigation.navigate('EditarPerfil')}>
                 <Text style={styles.actionText}>Editar perfil</Text>
                 <Feather name="edit-3" size={16} color="#1E293B" />
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.actionPill}>
+              <TouchableOpacity style={styles.actionPill} onPress={() => navigation.navigate('MinhasAvaliacoes')}>
                 <Text style={styles.actionText}>Avaliações Feitas</Text>
-                <Text style={styles.actionBadge}>{reviewsCount}</Text>
+                <Text style={styles.actionBadge}>{reviewsCount ?? '—'}</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.menuList}>
+
+<TouchableOpacity
+  style={styles.meusLugaresButton}
+  activeOpacity={0.8}
+  onPress={() => {
+    if (isPartner) {
+      navigation.navigate('MeusLugares');
+    } else {
+      navigation.navigate('SejaParceiro');
+    }
+  }}
+>
+  <View style={styles.meusLugaresIcon}>
+    <Ionicons
+      name="storefront-outline"
+      size={24}
+      color="#FFFFFF"
+    />
+  </View>
+
+  <View style={{ flex: 1 }}>
+    <Text style={styles.meusLugaresTitle}>
+      Meus Lugares
+    </Text>
+
+    <Text style={styles.meusLugaresSubtitle}>
+      {isPartner
+        ? 'Gerencie seus estabelecimentos'
+        : 'Torne-se parceiro do RolêApp'}
+    </Text>
+  </View>
+
+  <Ionicons
+    name="chevron-forward"
+    size={22}
+    color="#FFFFFF"
+  />
+</TouchableOpacity>
+
               {isAdmin && <TouchableOpacity style={styles.menuItem}
                 onPress={() => navigation.navigate('PainelAdmin')}>
                 <Text style={styles.menuText}>Painel Administrativo</Text>
               </TouchableOpacity>}
-              <TouchableOpacity style={styles.menuItem} onPress={refreshProfile}>
-                <Text style={styles.menuText}>Atualizar permissões</Text>
-              </TouchableOpacity>
               {profileError && <Text>{profileError}</Text>}
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Configuracoes')}>
                 <Text style={styles.menuText}>Configurações</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('AjudaSuporte')}>
                 <Text style={styles.menuText}>Ajuda e Suporte</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -392,13 +402,10 @@ export function PerfilScreen({ navigation }) {
               >
                 <Text style={styles.menuText}>Seja parceiro</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
-                <Text style={styles.menuText}>Contate-nos</Text>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('TermosUso')}>
+                <Text style={styles.menuText}>Termos de uso</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
-                <Text style={styles.menuText}>Termos e serviços</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Privacidade')}>
                 <Text style={styles.menuText}>Privacidade</Text>
               </TouchableOpacity>
             </View>
@@ -449,7 +456,7 @@ export function PerfilScreen({ navigation }) {
       </Modal>
       <View style={{height:100}}></View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -458,9 +465,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   topGradientBackground: { position: 'absolute', top: 0, left: 0, right: 0, height: 280 },
   safeArea: { flex: 1 },
-  scrollContent: { paddingBottom: 16 },
+  scrollContent: { ...FORM_CONTENT, paddingBottom: 16 },
   header: { alignItems: 'center', paddingBottom: 20, position: 'relative' },
-  notificationButton: { position: 'absolute', top: 10, right: 20, backgroundColor: '#DC2626', borderRadius: 20, padding: 8 },
   avatarWrapper: { position: 'relative', marginBottom: 8 },
   avatarContainer: {
     width: 90,
@@ -488,20 +494,20 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#FFFFFF',
   },
-  userName: { fontSize: 20, fontWeight: '700', color: '#0A0A0A' },
-  userEmail: { fontSize: 13, color: '#0A0A0A', marginTop: 2 },
+  userName: { fontSize: 20, fontWeight: '700', color: '#0A0A0A', textAlign: 'center', paddingHorizontal: 16 },
+  userEmail: { fontSize: 13, color: '#0A0A0A', marginTop: 2, textAlign: 'center', paddingHorizontal: 16 },
   contentCard: { backgroundColor: '#FFFFFF', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
   topCardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  card: { width: '48%', borderWidth: 1, borderColor: '#1E1848', borderRadius: 16, padding: 12, height: 90 },
-  visitedCard: { justifyContent: 'center' },
-  visitedCount: { fontSize: 32, fontWeight: '700', color: '#0F172A' },
-  cardLabel: { fontSize: 12, color: '#334155', fontWeight: '500' },
+  card: { width: '48%', borderWidth: 1, borderColor: '#1E1848', borderRadius: 16, padding: 12, minHeight: 90 },
   wishlistCard: { flexDirection: 'row', alignItems: 'center' },
   cardIcon: { width: 40, height: 40, marginRight: 8 },
-  wishlistLabel: { fontSize: 12, fontWeight: '600', color: '#0F172A', flexShrink: 1 },
-  actionsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  wishlistLabel: { fontSize: 12, fontWeight: '600', color: '#0F172A', flex: 1 },
+  wishlistCount: { fontSize: 14, fontWeight: '700', color: '#483AAE', marginLeft: 8, flexShrink: 1 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', marginBottom: 16 },
   actionPill: {
-    width: '48%',
+    flexBasis: 160,
+    flexGrow: 1,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: '#3B1A66',
     borderRadius: 12,
@@ -511,13 +517,47 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  actionText: { fontSize: 12, fontWeight: '600', color: '#0F172A' },
+  actionText: { fontSize: 12, fontWeight: '600', color: '#0F172A', flexShrink: 1 },
   actionBadge: { fontSize: 12, fontWeight: '700', color: '#0F172A' },
   menuList: { gap: 10, marginBottom: 20 },
-  menuItem: { borderWidth: 1, borderColor: '#3B1A66', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
+  menuItem: { minHeight: 44, justifyContent: 'center', borderWidth: 1, borderColor: '#3B1A66', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 16 },
   menuText: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
   logoutButton: { backgroundColor: '#DC2626', borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   logoutText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+
+
+meusLugaresButton: {
+  backgroundColor: '#4F159B',
+  borderRadius: 16,
+  padding: 16,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 12,
+  marginBottom: 8,
+  elevation: 3,
+},
+
+meusLugaresIcon: {
+  width: 46,
+  height: 46,
+  borderRadius: 12,
+  backgroundColor: '#7131C3',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+
+meusLugaresTitle: {
+  fontSize: 16,
+  fontWeight: '800',
+  color: '#FFFFFF',
+},
+
+meusLugaresSubtitle: {
+  fontSize: 12,
+  color: '#E9DCFF',
+  marginTop: 3,
+},
+
   saldoCardContainer: {
     backgroundColor: '#F8FAFC',
     borderRadius: 12,

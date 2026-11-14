@@ -1,126 +1,1586 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { PAGE_CONTENT } from '../utils/responsive';
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+
 import { AccessGate } from '../components/AccessGate';
+import { AdminPlacesPanel } from '../components/AdminPlacesPanel';
 import { adminService } from '../services/adminService';
 
-function Button({ label, onPress, disabled, selected }) {
-  return <TouchableOpacity accessibilityRole="button" disabled={disabled} onPress={onPress}
-    style={[styles.button, selected && styles.selected, disabled && { opacity: 0.5 }]}>
-    <Text>{label}</Text>
-  </TouchableOpacity>;
+const ROXO = '#6820C9';
+const ESCURO = '#1D173F';
+const FUNDO = '#F8F7FC';
+
+// Disponibilidade da interface, não uma fonte de autorização do backend.
+const SECOES = [
+  { id: 'solicitacoes', nome: 'Solicitações', icone: 'clipboard-outline' },
+  { id: 'locais', nome: 'Locais', icone: 'storefront-outline',
+    descricao: 'A consulta e a gestão de estabelecimentos estarão disponíveis em uma próxima etapa.' },
+  { id: 'campanhas', nome: 'Campanhas', icone: 'megaphone-outline',
+    descricao: 'A análise e o acompanhamento de campanhas estarão disponíveis em uma próxima etapa.' },
+  { id: 'administradores', nome: 'Administradores', icone: 'shield-checkmark-outline',
+    descricao: 'A consulta e a gestão de acessos administrativos estarão disponíveis em uma próxima etapa.' },
+];
+
+const ABAS = [
+  { id: 'revisao', nome: 'Revisão', icone: 'clipboard-outline' },
+  { id: 'pendentes', nome: 'Pendentes', icone: 'time-outline' },
+  { id: 'historico', nome: 'Histórico', icone: 'archive-outline' },
+];
+
+function BotaoContato({ icone, titulo, valor, onPress }) {
+  return (
+    <TouchableOpacity
+      style={styles.contato}
+      disabled={!onPress}
+      onPress={onPress}
+    >
+      <Ionicons name={icone} size={19} color={ROXO} />
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.contatoTitulo}>{titulo}</Text>
+        <Text style={styles.contatoValor}>
+          {valor || 'Não informado'}
+        </Text>
+      </View>
+
+      {!!onPress && (
+        <Ionicons name="open-outline" size={17} color={ROXO} />
+      )}
+    </TouchableOpacity>
+  );
 }
 
 function AdminContent({ navigation }) {
-  const [requests, setRequests] = useState([]);
-  const [review, setReview] = useState(null);
-  const [action, setAction] = useState('bloquear');
-  const [localId, setLocalId] = useState(null);
-  const [reason, setReason] = useState('');
-  const [identityChecked, setIdentityChecked] = useState(false);
-  const [duplicatesChecked, setDuplicatesChecked] = useState(false);
-  const [address, setAddress] = useState('');
-  const [price, setPrice] = useState('');
-  const [entryPrice, setEntryPrice] = useState('');
-  const [busy, setBusy] = useState(false);
-  const pending = useRef(false);
+  const [secao, setSecao] = useState('solicitacoes');
+  const secaoAtual = SECOES.find(item => item.id === secao);
+  // Dados da tela
+  const [solicitacoes, setSolicitacoes] = useState([]);
+  const [aba, setAba] = useState('revisao');
+  const [selecionada, setSelecionada] = useState(null);
 
-  const load = useCallback(async () => {
-    try { setRequests(await adminService.listarSolicitacoes()); }
-    catch (error) { Alert.alert('Acesso administrativo', error.message); }
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  // Carregamento
+  const [carregando, setCarregando] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
+  const [erro, setErro] = useState('');
 
-  const inspect = async id => {
-    if (pending.current) return;
-    pending.current = true; setBusy(true); setReview(null);
+  // Revisão comercial
+  const [observacao, setObservacao] = useState('');
+  const [encaminhando, setEncaminhando] = useState(false);
+
+  // Decisão administrativa
+  const [justificativa, setJustificativa] = useState('');
+  const [idLocalDecisao, setIdLocalDecisao] = useState('');
+  const [identidadeConfirmada, setIdentidadeConfirmada] = useState(false);
+  const [duplicidadeRevisada, setDuplicidadeRevisada] = useState(false);
+  const [decidindo, setDecidindo] = useState(false);
+  const [detalhesDecisao, setDetalhesDecisao] = useState(null);
+  const [carregandoDecisao, setCarregandoDecisao] = useState(false);
+  const [erroDecisao, setErroDecisao] = useState('');
+
+  // Carregar solicitações reais do Supabase
+  const carregar = useCallback(async (refresh = false) => {
+    if (refresh) {
+      setAtualizando(true);
+    } else {
+      setCarregando(true);
+    }
+
+    setErro('');
+
     try {
-      const result = await adminService.revisarSolicitacao(id);
-      setReview(result); setAction('bloquear'); setLocalId(null); setReason('');
-      setIdentityChecked(false); setDuplicatesChecked(false);
-      setAddress(''); setPrice(''); setEntryPrice('');
-    } catch (error) { Alert.alert('Revisão indisponível', error.message); }
-    finally { pending.current = false; setBusy(false); }
-  };
+      const dados = await adminService.listarSolicitacoes();
 
-  const submit = async decision => {
-    if (pending.current || !review) return;
-    pending.current = true; setBusy(true);
-    try {
-      await adminService.decidirSolicitacao({
-        reviewId: review.revisao_id, decisao: decision,
-        acao: decision === 'rejeitado' ? 'nenhuma' : decision === 'em_analise' ? 'bloquear' : action,
-        motivo: reason, identidadeValidada: identityChecked, duplicidadeRevisada: duplicatesChecked,
-        idLocalExistente: decision === 'aprovado' && action === 'vincular_existente' ? localId : null,
-        novoLocal: decision === 'aprovado' && action === 'criar_novo' ? {
-          endereco: address, preco: Number(price.replace(',', '.')),
-          preco_entrada: entryPrice.trim() ? Number(entryPrice.replace(',', '.')) : NaN,
-        } : null,
-      });
-      setReview(null); await load(); Alert.alert('Decisão registrada', 'O resultado foi registrado com auditoria.');
+      setSolicitacoes(
+        Array.isArray(dados) ? dados : []
+      );
     } catch (error) {
-      Alert.alert('Decisão não confirmada', `${error.message} Reutilize a mesma revisão e decisão para consultar uma tentativa repetida. Se os dados mudaram, abra uma nova revisão.`);
-    } finally { pending.current = false; setBusy(false); }
-  };
+      setErro(
+        error?.message ||
+        'Não foi possível carregar as solicitações.'
+      );
+    } finally {
+      setCarregando(false);
+      setAtualizando(false);
+    }
+  }, []);
 
-  const candidates = review?.estado?.candidatos || [];
-  const related = review?.estado?.solicitacoes_relacionadas || [];
-  return <SafeAreaView style={styles.page}>
-    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Button label="Voltar" onPress={() => navigation.goBack()} />
-      <Text style={styles.title}>Painel Administrativo</Text>
-      <Text>Aprovações exigem revisão de identidade e vínculo. Nenhum local é selecionado automaticamente.</Text>
-      <Button label="Atualizar solicitações" onPress={load} disabled={busy} />
-      {busy && <ActivityIndicator accessibilityLabel="Processando revisão" />}
-      {requests.map(request => <View style={styles.card} key={request.id_solicitacao}>
-        <Text style={styles.heading}>#{request.id_solicitacao} · {request.estabelecimento}</Text>
-        <Text>{request.cidade_estado} · {request.status}</Text>
-        <Text>{request.nome} · {request.email}</Text>
-        {['pendente', 'em_analise'].includes(request.status) && <Button label="Revisar solicitação"
-          disabled={busy} onPress={() => inspect(request.id_solicitacao)} />}
-      </View>)}
-      {!requests.length && <Text>Nenhuma solicitação disponível.</Text>}
-      {review && <View style={styles.card}>
-        <Text style={styles.heading}>Revisão #{review.estado.solicitacao.id_solicitacao}</Text>
-        <Text>{review.estado.solicitacao.estabelecimento} · {review.estado.solicitacao.cidade_estado}</Text>
-        <Text>Pedidos relacionados: {related.map(r => `#${r.id_solicitacao} (${r.status})`).join(', ') || 'nenhum'}</Text>
-        <Text>Candidatos são indícios, não duplicações confirmadas. Pedidos ambíguos devem ficar em análise.</Text>
-        {candidates.map(local => <Button key={local.id_local}
-          label={`Vincular #${local.id_local}: ${local.nome} · ${local.id_proprietario ? 'com proprietário' : 'sem proprietário'}`}
-          selected={action === 'vincular_existente' && localId === local.id_local} disabled={busy}
-          onPress={() => { setLocalId(local.id_local); setAction('vincular_existente'); }} />)}
-        <Button label="Criar novo após verificar ausência de vínculo" selected={action === 'criar_novo'}
-          disabled={busy || candidates.length > 0 || related.some(r => ['pendente', 'em_analise', 'aprovado'].includes(r.status))}
-          onPress={() => { setLocalId(null); setAction('criar_novo'); }} />
-        {action === 'criar_novo' && <>
-          <TextInput style={styles.input} placeholder="Endereço confirmado" value={address} onChangeText={setAddress} />
-          <TextInput style={styles.input} placeholder="Gasto médio confirmado" keyboardType="decimal-pad" value={price} onChangeText={setPrice} />
-          <TextInput style={styles.input} placeholder="Preço de entrada confirmado (0 se gratuita)" keyboardType="decimal-pad" value={entryPrice} onChangeText={setEntryPrice} />
-        </>}
-        <Button label="Bloquear para revisão manual" selected={action === 'bloquear'}
-          disabled={busy} onPress={() => { setAction('bloquear'); setLocalId(null); }} />
-        <Button label={`${identityChecked ? '✓' : '○'} Identidade e propriedade verificadas`}
-          disabled={busy} onPress={() => setIdentityChecked(value => !value)} />
-        <Button label={`${duplicatesChecked ? '✓' : '○'} Candidatos e pedidos relacionados revisados`}
-          disabled={busy} onPress={() => setDuplicatesChecked(value => !value)} />
-        <TextInput style={styles.input} placeholder="Justificativa e evidências (sem documentos sensíveis)"
-          value={reason} onChangeText={setReason} multiline maxLength={2000} />
-        <Button label="Aprovar seleção explícita" disabled={busy || action === 'bloquear'} onPress={() => submit('aprovado')} />
-        <Button label="Manter em análise" disabled={busy} onPress={() => submit('em_analise')} />
-        <Button label="Rejeitar solicitação" disabled={busy} onPress={() => submit('rejeitado')} />
-      </View>}
-    </ScrollView>
-  </SafeAreaView>;
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  // Contagem por aba
+  const contagens = useMemo(() => {
+    return {
+      revisao: solicitacoes.filter(
+        item => item.status === 'pendente'
+      ).length,
+
+      pendentes: solicitacoes.filter(
+        item => item.status === 'em_analise'
+      ).length,
+
+      historico: solicitacoes.filter(
+        item =>
+          item.status === 'aprovado' ||
+          item.status === 'rejeitado'
+      ).length,
+    };
+  }, [solicitacoes]);
+
+  // Filtrar os pedidos da aba selecionada
+  const lista = useMemo(() => {
+    return solicitacoes.filter(item => {
+      if (aba === 'revisao') {
+        return item.status === 'pendente';
+      }
+
+      if (aba === 'pendentes') {
+        return item.status === 'em_analise';
+      }
+
+      return (
+        item.status === 'aprovado' ||
+        item.status === 'rejeitado'
+      );
+    });
+  }, [solicitacoes, aba]);
+
+  function statusTexto(status) {
+    const nomes = {
+      pendente: 'Aguardando revisão',
+      em_analise: 'Pendente de decisão',
+      aprovado: 'Aprovado',
+      rejeitado: 'Reprovado',
+    };
+
+    return nomes[status] || status;
+  }
+
+  // Contatos
+  async function abrirEmail(email) {
+    if (!email) return;
+
+    try {
+      await Linking.openURL(
+        `mailto:${encodeURIComponent(email)}`
+      );
+    } catch {
+      Alert.alert(
+        'Erro',
+        'Não foi possível abrir o aplicativo de e-mail.'
+      );
+    }
+  }
+
+  async function abrirTelefone(telefone) {
+    if (!telefone) return;
+
+    const numero = String(telefone).replace(/[^\d+]/g, '');
+
+    try {
+      await Linking.openURL(`tel:${numero}`);
+    } catch {
+      Alert.alert(
+        'Erro',
+        'Não foi possível abrir o aplicativo de chamadas.'
+      );
+    }
+  }
+
+  // Abrir solicitação
+ 
+async function abrirSolicitacao(item) {
+  setSelecionada(item);
+
+  setObservacao('');
+  setJustificativa('');
+  setIdLocalDecisao('');
+  setIdentidadeConfirmada(false);
+  setDuplicidadeRevisada(false);
+
+  setDetalhesDecisao(null);
+  setErroDecisao('');
+  setCarregandoDecisao(false);
+
+  // Buscar informações adicionais apenas no Histórico.
+  if (!['aprovado', 'rejeitado'].includes(item.status)) {
+    return;
+  }
+
+  setCarregandoDecisao(true);
+
+  try {
+    const dados = await adminService.obterDetalhesDecisao(
+      item.id_solicitacao
+    );
+
+    setDetalhesDecisao(dados);
+  } catch (error) {
+    setErroDecisao(
+      error?.message ||
+        'Não foi possível consultar a decisão.'
+    );
+  } finally {
+    setCarregandoDecisao(false);
+  }
 }
 
+  function fecharDetalhes() {
+    if (encaminhando || decidindo) return;
+
+    setSelecionada(null);
+    setObservacao('');
+    setJustificativa('');
+    setIdLocalDecisao('');
+    setIdentidadeConfirmada(false);
+    setDuplicidadeRevisada(false);
+  }
+
+  // Revisão -> Pendentes
+  async function encaminharSolicitacao() {
+    if (!selecionada || encaminhando || decidindo) return;
+
+    const texto = observacao.trim();
+
+    if (texto.length < 10 || texto.length > 2000) {
+      Alert.alert(
+        'Observação obrigatória',
+        'Informe uma observação de 10 a 2000 caracteres.'
+      );
+      return;
+    }
+
+    if (!selecionada.id_usuario) {
+      Alert.alert(
+        'Solicitação incompleta',
+        'Este pedido não possui usuário vinculado.'
+      );
+      return;
+    }
+
+    setEncaminhando(true);
+
+    try {
+      await adminService.encaminharParaDecisao(
+        selecionada.id_solicitacao,
+        texto
+      );
+
+      setSelecionada(null);
+      setObservacao('');
+      setAba('pendentes');
+
+      await carregar(true);
+
+      Alert.alert(
+        'Solicitação encaminhada!',
+        'O pedido foi movido para a aba Pendentes.'
+      );
+    } catch (error) {
+      Alert.alert(
+        'Erro ao encaminhar',
+        error?.message || 'Não foi possível encaminhar.'
+      );
+    } finally {
+      setEncaminhando(false);
+    }
+  }
+
+  // Preparar aprovação ou reprovação
+  function confirmarDecisao(decisao) {
+    if (!selecionada || decidindo || encaminhando) return;
+
+    if (selecionada.status !== 'em_analise') {
+      Alert.alert(
+        'Atenção',
+        'Esta solicitação não está aguardando decisão.'
+      );
+      return;
+    }
+
+    if (!selecionada.id_usuario) {
+      Alert.alert(
+        'Solicitação incompleta',
+        'O solicitante precisa ter uma conta vinculada.'
+      );
+      return;
+    }
+
+    const motivo = justificativa.trim();
+
+    if (motivo.length < 10 || motivo.length > 2000) {
+      Alert.alert(
+        'Justificativa obrigatória',
+        'Informe entre 10 e 2000 caracteres.'
+      );
+      return;
+    }
+
+    let idLocal = null;
+
+    if (decisao === 'aprovado') {
+      const textoId = idLocalDecisao.trim();
+      idLocal = Number(textoId);
+
+      if (
+        !textoId ||
+        !Number.isSafeInteger(idLocal) ||
+        idLocal <= 0
+      ) {
+        Alert.alert(
+          'Estabelecimento obrigatório',
+          'Informe o ID válido do estabelecimento.'
+        );
+        return;
+      }
+
+      if (!identidadeConfirmada || !duplicidadeRevisada) {
+        Alert.alert(
+          'Verificações obrigatórias',
+          'Confirme a identidade, a propriedade e as duplicidades.'
+        );
+        return;
+      }
+    }
+
+    // Copiar os dados antes de abrir a confirmação.
+    const dados = {
+      idSolicitacao: selecionada.id_solicitacao,
+      decisao,
+      justificativa: motivo,
+      idLocal,
+      identidadeConfirmada:
+        decisao === 'aprovado' && identidadeConfirmada,
+      duplicidadeRevisada:
+        decisao === 'aprovado' && duplicidadeRevisada,
+    };
+
+    Alert.alert(
+      decisao === 'aprovado'
+        ? 'Confirmar aprovação'
+        : 'Confirmar reprovação',
+
+      `Deseja ${
+        decisao === 'aprovado' ? 'aprovar' : 'reprovar'
+      } a solicitação #${selecionada.id_solicitacao}?`,
+
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Confirmar',
+          style:
+            decisao === 'rejeitado'
+              ? 'destructive'
+              : 'default',
+          onPress: () => executarDecisao(dados),
+        },
+      ]
+    );
+  }
+
+  // Executar decisão no Supabase
+  async function executarDecisao(dados) {
+    if (decidindo || encaminhando) return;
+
+    setDecidindo(true);
+
+    try {
+      await adminService.decidirParceria(dados);
+
+      setSelecionada(null);
+      setAba('historico');
+
+      setJustificativa('');
+      setIdLocalDecisao('');
+      setIdentidadeConfirmada(false);
+      setDuplicidadeRevisada(false);
+
+      await carregar(true);
+
+      Alert.alert(
+        'Decisão registrada!',
+        'A solicitação foi movida para o Histórico.'
+      );
+    } catch (error) {
+      Alert.alert(
+        'Não foi possível registrar a decisão',
+        error?.message || 'Verifique os dados.'
+      );
+
+      await carregar(true);
+    } finally {
+      setDecidindo(false);
+    }
+  }
+
+  // Card da listagem
+  function renderCard(item) {
+    return (
+      <TouchableOpacity
+        key={String(item.id_solicitacao)}
+        style={styles.card}
+        activeOpacity={0.85}
+        onPress={() => abrirSolicitacao(item)}
+      >
+        <View style={styles.cardTopo}>
+          <View style={styles.iconeLocal}>
+            <Ionicons
+              name="storefront-outline"
+              size={24}
+              color={ROXO}
+            />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.nomeLocal}>
+              {item.estabelecimento || 'Sem nome'}
+            </Text>
+
+            <Text style={styles.detalhe}>
+              {item.cidade_estado || 'Cidade não informada'}
+            </Text>
+          </View>
+
+          <Ionicons
+            name="chevron-forward"
+            size={21}
+            color="#82778F"
+          />
+        </View>
+
+        <View style={styles.divisor} />
+
+        <Text style={styles.solicitante}>
+          {item.nome || 'Solicitante não informado'}
+        </Text>
+
+        <View style={styles.cardRodape}>
+          <Text style={styles.numero}>
+            Solicitação #{item.id_solicitacao}
+          </Text>
+
+          <Text style={styles.status}>
+            {statusTexto(item.status)}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
+  // Detalhes de uma solicitação
+  function renderDetalhes() {
+    if (!selecionada) return null;
+
+    const item = selecionada;
+
+    return (
+      <View style={styles.detalhes}>
+        <TouchableOpacity
+          style={styles.voltarDetalhes}
+          onPress={fecharDetalhes}
+          disabled={encaminhando || decidindo}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={23}
+            color={ESCURO}
+          />
+
+          <Text style={styles.voltarTexto}>
+            Voltar às solicitações
+          </Text>
+        </TouchableOpacity>
+
+        {/* Identificação da solicitação */}
+        <View style={styles.card}>
+          <Text style={styles.numero}>
+            SOLICITAÇÃO #{item.id_solicitacao}
+          </Text>
+
+          <Text style={styles.detalhesTitulo}>
+            {item.estabelecimento}
+          </Text>
+
+          <Text style={styles.detalhe}>
+            {item.cidade_estado}
+          </Text>
+
+          <View style={styles.statusBox}>
+            <Text style={styles.status}>
+              {statusTexto(item.status)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Dados do responsável */}
+        <Text style={styles.secaoTitulo}>
+          Dados do responsável
+        </Text>
+
+        <View style={styles.card}>
+          <BotaoContato
+            icone="person-outline"
+            titulo="Responsável"
+            valor={item.nome}
+          />
+
+          <BotaoContato
+            icone="mail-outline"
+            titulo="E-mail"
+            valor={item.email}
+            onPress={
+              item.email
+                ? () => abrirEmail(item.email)
+                : undefined
+            }
+          />
+
+          <BotaoContato
+            icone="call-outline"
+            titulo="Telefone / WhatsApp"
+            valor={item.telefone}
+            onPress={
+              item.telefone
+                ? () => abrirTelefone(item.telefone)
+                : undefined
+            }
+          />
+        </View>
+
+        {/* Análise comercial */}
+        <Text style={styles.secaoTitulo}>
+          Análise comercial
+        </Text>
+
+        <View style={styles.card}>
+          <View style={styles.avisoLinha}>
+            <Ionicons
+              name="information-circle-outline"
+              size={22}
+              color={ROXO}
+            />
+
+            <Text style={styles.avisoTexto}>
+              Entre em contato para confirmar os dados,
+              conhecer o negócio e conversar sobre os
+              planos do RolêApp.
+            </Text>
+          </View>
+
+          {/* ABA REVISÃO */}
+          {item.status === 'pendente' ? (
+            <View style={styles.formRevisao}>
+              <Text style={styles.formTitulo}>
+                Observações da revisão
+              </Text>
+
+              <Text style={styles.formDescricao}>
+                Registre o contato comercial, o interesse
+                na parceria e os próximos passos.
+              </Text>
+
+              <TextInput
+                style={styles.observacaoInput}
+                placeholder="Ex.: Conversei com o responsável, apresentei os planos e confirmei o interesse..."
+                placeholderTextColor="#9990A6"
+                multiline
+                textAlignVertical="top"
+                maxLength={2000}
+                value={observacao}
+                onChangeText={setObservacao}
+                editable={!encaminhando}
+              />
+
+              {!item.id_usuario && (
+                <Text style={styles.alerta}>
+                  Esta solicitação não possui usuário
+                  vinculado. Verifique o cadastro antes
+                  de encaminhar.
+                </Text>
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.botaoEncaminhar,
+                  (encaminhando || !item.id_usuario) &&
+                    styles.desabilitado,
+                ]}
+                disabled={
+                  encaminhando || !item.id_usuario
+                }
+                onPress={encaminharSolicitacao}
+              >
+                {encaminhando ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="arrow-forward-circle-outline"
+                      size={22}
+                      color="#FFFFFF"
+                    />
+
+                    <Text style={styles.botaoDecisaoTexto}>
+                      Encaminhar para decisão
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+          ) : item.status === 'em_analise' ? (
+
+            /* ABA PENDENTES */
+            <View style={styles.formRevisao}>
+              <Text style={styles.formTitulo}>
+                Decisão administrativa
+              </Text>
+
+              <Text style={styles.formDescricao}>
+                Registre o motivo da decisão.
+                Para aprovar, confirme a identidade
+                e o estabelecimento do solicitante.
+              </Text>
+
+              <Text style={styles.campoLabel}>
+                Justificativa da decisão *
+              </Text>
+
+              <TextInput
+                style={styles.observacaoInput}
+                placeholder="Informe o resultado da análise comercial..."
+                placeholderTextColor="#9990A6"
+                multiline
+                textAlignVertical="top"
+                maxLength={2000}
+                value={justificativa}
+                onChangeText={setJustificativa}
+                editable={!decidindo}
+              />
+
+              <Text style={styles.campoLabel}>
+                ID do estabelecimento confirmado
+              </Text>
+
+              <TextInput
+                style={styles.campoDecisao}
+                placeholder="Ex.: 8"
+                placeholderTextColor="#9990A6"
+                keyboardType="number-pad"
+                value={idLocalDecisao}
+                onChangeText={setIdLocalDecisao}
+                editable={!decidindo}
+              />
+
+              <Text style={styles.formDescricao}>
+                Para aprovar, informe o ID de um
+                estabelecimento já cadastrado e
+                pertencente ao solicitante.
+              </Text>
+
+              <TouchableOpacity
+                style={styles.confirmacaoLinha}
+                disabled={decidindo}
+                onPress={() =>
+                  setIdentidadeConfirmada(valor => !valor)
+                }
+              >
+                <Ionicons
+                  name={
+                    identidadeConfirmada
+                      ? 'checkbox'
+                      : 'square-outline'
+                  }
+                  size={24}
+                  color={ROXO}
+                />
+
+                <Text style={styles.confirmacaoTexto}>
+                  Confirmei a identidade e a
+                  propriedade do estabelecimento.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmacaoLinha}
+                disabled={decidindo}
+                onPress={() =>
+                  setDuplicidadeRevisada(valor => !valor)
+                }
+              >
+                <Ionicons
+                  name={
+                    duplicidadeRevisada
+                      ? 'checkbox'
+                      : 'square-outline'
+                  }
+                  size={24}
+                  color={ROXO}
+                />
+
+                <Text style={styles.confirmacaoTexto}>
+                  Verifiquei possíveis solicitações
+                  duplicadas e conflitos.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.botaoAprovar,
+                  decidindo && styles.desabilitado,
+                ]}
+                disabled={decidindo}
+                onPress={() =>
+                  confirmarDecisao('aprovado')
+                }
+              >
+                {decidindo ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.botaoDecisaoTexto}>
+                      Aprovar parceria
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.botaoReprovar,
+                  decidindo && styles.desabilitado,
+                ]}
+                disabled={decidindo}
+                onPress={() =>
+                  confirmarDecisao('rejeitado')
+                }
+              >
+                <Ionicons
+                  name="close-circle-outline"
+                  size={22}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.botaoDecisaoTexto}>
+                  Reprovar parceria
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+
+            /* ABA HISTÓRICO */
+            
+<View style={styles.historicoContainer}>
+  <View style={styles.historicoInfo}>
+    <Ionicons
+      name={
+        item.status === 'aprovado'
+          ? 'checkmark-circle-outline'
+          : 'close-circle-outline'
+      }
+      size={26}
+      color={
+        item.status === 'aprovado'
+          ? '#26804D'
+          : '#C0394B'
+      }
+    />
+
+    <Text style={styles.historicoTitulo}>
+      {item.status === 'aprovado'
+        ? 'Parceria aprovada'
+        : 'Solicitação reprovada'}
+    </Text>
+  </View>
+
+  {carregandoDecisao ? (
+    <ActivityIndicator
+      color={ROXO}
+      style={{ marginVertical: 20 }}
+    />
+  ) : erroDecisao ? (
+    <Text style={styles.alerta}>
+      {erroDecisao}
+    </Text>
+  ) : detalhesDecisao ? (
+    <>
+      <View style={styles.divisor} />
+
+      <Text style={styles.campoLabel}>
+        Justificativa registrada
+      </Text>
+
+      <Text style={styles.historicoValor}>
+        {detalhesDecisao.justificativa ||
+          'Sem justificativa registrada.'}
+      </Text>
+
+      <Text style={styles.campoLabel}>
+        Data da decisão
+      </Text>
+
+      <Text style={styles.historicoValor}>
+        {detalhesDecisao.data_decisao
+          ? new Date(
+              detalhesDecisao.data_decisao
+            ).toLocaleString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : 'Data não disponível'}
+      </Text>
+
+      <Text style={styles.campoLabel}>
+        Administrador responsável
+      </Text>
+
+      <Text style={styles.historicoValor}>
+        {detalhesDecisao.administrador_email ||
+          detalhesDecisao.id_admin ||
+          'Não identificado'}
+      </Text>
+
+      {detalhesDecisao.id_local != null && (
+        <>
+          <Text style={styles.campoLabel}>
+            Estabelecimento vinculado
+          </Text>
+
+          <Text style={styles.historicoValor}>
+            ID {detalhesDecisao.id_local}
+          </Text>
+        </>
+      )}
+    </>
+  ) : (
+    <Text style={styles.formDescricao}>
+      Não foi encontrado um registro de decisão
+      para esta solicitação.
+    </Text>
+  )}
+</View>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  // Tela principal
+  return (
+    <SafeAreaView style={styles.tela}>
+      <KeyboardViewport style={{ flex: 1 }}>
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.conteudo}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={secao === 'solicitacoes' ? (
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={() => carregar(true)}
+            tintColor={ROXO}
+            colors={[ROXO]}
+          />
+        ) : undefined}
+      >
+        <View style={styles.cabecalho}>
+          <TouchableOpacity
+            style={styles.voltar}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons
+              name="arrow-back"
+              size={25}
+              color="#FFFFFF"
+            />
+          </TouchableOpacity>
+
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={36}
+            color="#FFFFFF"
+          />
+
+          <Text style={styles.titulo}>
+            Painel Administrativo
+          </Text>
+
+          <Text style={styles.subtitulo}>
+            Gestão do RolêApp
+          </Text>
+        </View>
+
+        <View style={styles.corpo}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.secoes}
+          >
+            {SECOES.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                accessibilityRole="tab"
+                accessibilityLabel={item.nome}
+                accessibilityHint={item.id === 'solicitacoes'
+                  ? 'Abrir solicitações de parceria'
+                  : 'Abrir informações da seção em preparação'}
+                accessibilityState={{ selected: secao === item.id, disabled: encaminhando || decidindo }}
+                disabled={encaminhando || decidindo}
+                onPress={() => setSecao(item.id)}
+                style={[styles.secao, secao === item.id && styles.abaAtiva]}
+              >
+                <Ionicons name={item.icone} size={21} color={secao === item.id ? '#FFFFFF' : ROXO} />
+                <Text style={[styles.secaoTexto, secao === item.id && styles.abaTextoAtiva]}>
+                  {item.nome}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {secao === 'locais' ? <AdminPlacesPanel /> : secao !== 'solicitacoes' ? (
+            <View style={styles.preparacao}>
+              <Ionicons name={secaoAtual.icone} size={36} color={ROXO} />
+              <Text accessibilityRole="header" style={styles.secaoTitulo}>{secaoAtual.nome}</Text>
+              <Text style={styles.preparacaoTitulo}>Funcionalidade em preparação</Text>
+              <Text style={styles.preparacaoTexto}>{secaoAtual.descricao}</Text>
+            </View>
+          ) : selecionada ? (
+            renderDetalhes()
+          ) : (
+            <>
+              {/* Resumo */}
+              <View style={styles.resumo}>
+                {[
+                  {
+                    nome: 'Revisão',
+                    valor: contagens.revisao,
+                  },
+                  {
+                    nome: 'Pendentes',
+                    valor: contagens.pendentes,
+                  },
+                  {
+                    nome: 'Histórico',
+                    valor: contagens.historico,
+                  },
+                ].map(item => (
+                  <View
+                    key={item.nome}
+                    style={styles.resumoCard}
+                  >
+                    <Text style={styles.resumoNumero}>
+                      {item.valor}
+                    </Text>
+
+                    <Text style={styles.resumoTexto}>
+                      {item.nome}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Navegação por etapas */}
+              <View style={styles.abas}>
+                {ABAS.map(item => (
+                  <TouchableOpacity
+                    key={item.id}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.nome}
+                    accessibilityState={{ selected: aba === item.id }}
+                    style={[
+                      styles.aba,
+                      aba === item.id && styles.abaAtiva,
+                    ]}
+                    onPress={() => setAba(item.id)}
+                  >
+                    <Ionicons
+                      name={item.icone}
+                      size={17}
+                      color={
+                        aba === item.id
+                          ? '#FFFFFF'
+                          : ROXO
+                      }
+                    />
+
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      style={[
+                        styles.abaTexto,
+                        aba === item.id &&
+                          styles.abaTextoAtiva,
+                      ]}
+                    >
+                      {item.nome}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.linhaTitulo}>
+                <Text style={styles.secaoTitulo}>
+                  {aba === 'revisao'
+                    ? 'Aguardando revisão'
+                    : aba === 'pendentes'
+                    ? 'Aguardando decisão'
+                    : 'Histórico de solicitações'}
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => carregar()}
+                >
+                  <Ionicons
+                    name="refresh-outline"
+                    size={24}
+                    color={ROXO}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Listagem */}
+              {carregando ? (
+                <ActivityIndicator
+                  size="large"
+                  color={ROXO}
+                  style={{ marginTop: 35 }}
+                />
+              ) : erro ? (
+                <View style={styles.vazio}>
+                  <Text style={styles.erro}>
+                    {erro}
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() => carregar()}
+                  >
+                    <Text style={styles.link}>
+                      Tentar novamente
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : lista.length === 0 ? (
+                <View style={styles.vazio}>
+                  <Ionicons
+                    name="checkmark-circle-outline"
+                    size={40}
+                    color={ROXO}
+                  />
+
+                  <Text style={styles.vazioTexto}>
+                    Nenhuma solicitação nesta etapa.
+                  </Text>
+                </View>
+              ) : (
+                lista.map(renderCard)
+              )}
+            </>
+          )}
+        </View>
+      </KeyboardAwareScrollView>
+      </KeyboardViewport>
+    </SafeAreaView>
+  );
+}
+
+// Somente administradores podem abrir a tela.
 export function PainelAdminScreen(props) {
-  return <AccessGate role="admin"><AdminContent {...props} /></AccessGate>;
+  return (
+    <AccessGate role="admin">
+      <AdminContent {...props} />
+    </AccessGate>
+  );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F6FB' }, content: { padding: 20, gap: 12 },
-  title: { fontSize: 25, fontWeight: '700' }, heading: { fontSize: 17, fontWeight: '600' },
-  card: { padding: 16, borderRadius: 12, backgroundColor: 'white', gap: 10 },
-  button: { padding: 12, borderWidth: 1, borderColor: '#6B5DAA', borderRadius: 8, marginVertical: 3 },
-  selected: { backgroundColor: '#E7E0FF' }, input: { borderWidth: 1, borderColor: '#aaa', borderRadius: 8, padding: 12 },
+  tela: {
+    flex: 1,
+    backgroundColor: FUNDO,
+  },
+
+  conteudo: {
+    ...PAGE_CONTENT,
+    paddingBottom: 35,
+  },
+
+  cabecalho: {
+    backgroundColor: '#4F159B',
+    borderBottomLeftRadius: 26,
+    borderBottomRightRadius: 26,
+    padding: 22,
+    alignItems: 'center',
+  },
+
+  voltar: {
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+
+  titulo: {
+    fontSize: 25,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+
+  subtitulo: {
+    color: '#E9DAFF',
+    marginTop: 5,
+  },
+
+  corpo: {
+    padding: 16,
+  },
+
+  secoes: {
+    flexGrow: 1,
+    gap: 8,
+    paddingBottom: 16,
+  },
+
+  secao: {
+    flex: 1,
+    minWidth: 128,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#EFE6FC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+
+  secaoTexto: {
+    color: ROXO,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  preparacao: {
+    padding: 24,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  preparacaoTitulo: {
+    color: ESCURO,
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  preparacaoTexto: {
+    color: '#665B7B',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 23,
+  },
+
+  resumo: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+
+  resumoCard: {
+    flex: 1,
+    backgroundColor: '#EDE4FC',
+    borderRadius: 14,
+    alignItems: 'center',
+    paddingVertical: 15,
+  },
+
+  resumoNumero: {
+    fontSize: 25,
+    fontWeight: '900',
+    color: ROXO,
+  },
+
+  resumoTexto: {
+    textAlign: 'center',
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: ESCURO,
+  },
+
+  abas: {
+    flexDirection: 'row',
+    gap: 5,
+    marginBottom: 22,
+  },
+
+  aba: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#EEE7F8',
+  },
+
+  abaAtiva: {
+    backgroundColor: ROXO,
+  },
+
+  abaTexto: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: ROXO,
+    textAlign: 'center',
+  },
+
+  abaTextoAtiva: {
+    color: '#FFFFFF',
+  },
+
+  linhaTitulo: {
+    flexWrap: 'wrap',
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+
+  secaoTitulo: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: ESCURO,
+    marginBottom: 12,
+  },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E8E1F2',
+  },
+
+  cardTopo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+
+  iconeLocal: {
+    width: 49,
+    height: 49,
+    borderRadius: 12,
+    backgroundColor: '#F1E8FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  nomeLocal: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: ESCURO,
+  },
+
+  detalhe: {
+    fontSize: 13,
+    color: '#777087',
+    marginTop: 4,
+  },
+
+  divisor: {
+    height: 1,
+    backgroundColor: '#EFEAF4',
+    marginVertical: 13,
+  },
+
+  solicitante: {
+    color: '#504860',
+    fontSize: 13,
+  },
+
+  cardRodape: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 13,
+  },
+
+  numero: {
+    fontSize: 12,
+    color: '#786E89',
+    fontWeight: '700',
+  },
+
+  status: {
+    color: ROXO,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  voltarDetalhes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 18,
+  },
+
+  voltarTexto: {
+    color: ESCURO,
+    fontWeight: '700',
+  },
+
+  detalhes: {
+    gap: 8,
+  },
+
+  detalhesTitulo: {
+    fontSize: 23,
+    fontWeight: '800',
+    color: ESCURO,
+    marginTop: 12,
+  },
+
+  statusBox: {
+    backgroundColor: '#EDE4FC',
+    padding: 12,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+    marginTop: 14,
+  },
+
+  contato: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+
+  contatoTitulo: {
+    color: '#81798E',
+    fontSize: 12,
+    marginBottom: 3,
+  },
+
+  contatoValor: {
+    color: ESCURO,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  avisoLinha: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+  },
+
+  avisoTexto: {
+    flex: 1,
+    color: '#59506A',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  formRevisao: {
+    gap: 12,
+    marginTop: 15,
+  },
+
+  formTitulo: {
+    color: ESCURO,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  formDescricao: {
+    color: '#706780',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  campoLabel: {
+    color: ESCURO,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  observacaoInput: {
+    backgroundColor: '#FCFAFF',
+    borderWidth: 1,
+    borderColor: '#D9CCE9',
+    borderRadius: 12,
+    minHeight: 125,
+    padding: 13,
+    fontSize: 14,
+    color: ESCURO,
+    textAlignVertical: 'top',
+  },
+
+  campoDecisao: {
+    backgroundColor: '#FCFAFF',
+    borderWidth: 1,
+    borderColor: '#D9CCE9',
+    borderRadius: 12,
+    padding: 13,
+    fontSize: 15,
+    color: ESCURO,
+  },
+
+  confirmacaoLinha: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F4EFFA',
+    padding: 13,
+    borderRadius: 12,
+  },
+
+  confirmacaoTexto: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#45395B',
+  },
+
+  botaoEncaminhar: {
+    backgroundColor: ROXO,
+    padding: 15,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+
+  botaoAprovar: {
+    backgroundColor: '#26804D',
+    padding: 15,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+
+  botaoReprovar: {
+    backgroundColor: '#C0394B',
+    padding: 15,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+  },
+
+  botaoDecisaoTexto: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  desabilitado: {
+    opacity: 0.5,
+  },
+
+  alerta: {
+    color: '#B45309',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  historicoInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingTop: 16,
+  },
+
+  vazio: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 26,
+    alignItems: 'center',
+    gap: 12,
+  },
+
+  vazioTexto: {
+    color: '#777087',
+    textAlign: 'center',
+  },
+
+  erro: {
+    color: '#B83E4E',
+    textAlign: 'center',
+  },
+
+  link: {
+    color: ROXO,
+    fontWeight: '800',
+  },
+
+
+historicoContainer: {
+  marginTop: 16,
+  gap: 11,
+  backgroundColor: '#F8F5FD',
+  borderRadius: 12,
+  padding: 15,
+},
+
+historicoTitulo: {
+  fontSize: 16,
+  fontWeight: '800',
+  color: '#1D173F',
+  flex: 1,
+},
+
+historicoValor: {
+  fontSize: 14,
+  lineHeight: 21,
+  color: '#514760',
+  backgroundColor: '#FFFFFF',
+  padding: 12,
+  borderRadius: 9,
+},
+
+
 });

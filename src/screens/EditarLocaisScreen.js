@@ -1,21 +1,22 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT, responsiveMetrics } from '../utils/responsive';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   TextInput,
   Switch,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
+import { LocalizacaoEstabelecimento } from '../components/LocalizacaoEstabelecimento';
 
 const DEFAULT_HOURS = [
   { day: 'Seg', open: '08:00', close: '18:00', active: true, dia_semana: 1 },
@@ -28,6 +29,7 @@ const DEFAULT_HOURS = [
 ];
 
 export function EditarLocaisScreen({ navigation, route }) {
+  const layout = responsiveMetrics(useWindowDimensions());
   const { user } = useAuth();
   const userId = user?.id_usuario || user?.id;
 
@@ -35,6 +37,9 @@ export function EditarLocaisScreen({ navigation, route }) {
   const [currentLocal, setCurrentLocal] = useState(route?.params?.local || null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const loadRequest = useRef(0);
+  const [savingLocation, setSavingLocation] = useState(false);
 
   // Form states
   const [nomeLocal, setNomeLocal] = useState('');
@@ -47,9 +52,12 @@ export function EditarLocaisScreen({ navigation, route }) {
   const [cidadeUf, setCidadeUf] = useState('Brasília, DF');
   const [isVisibleInApp, setIsVisibleInApp] = useState(true);
 
-  // Horários
+  // Horários e Eventos
   const [hours, setHours] = useState(DEFAULT_HOURS);
+  const [events, setEvents] = useState([]);
+
   const [togglingVisibility, setTogglingVisibility] = useState(false);
+  const mutationInFlight = useRef(false);
 
   // Validação: todos os campos preenchidos
   const isFormComplete = useMemo(() => {
@@ -83,26 +91,35 @@ export function EditarLocaisScreen({ navigation, route }) {
 
   // Carrega lista de locais do parceiro
   const loadLocais = useCallback(async () => {
+    const request = ++loadRequest.current;
+    setLoading(true);
+    setCurrentLocal(null);
     try {
       const data = await parceiroService.getLocaisDoParceiro(userId);
+      if (request !== loadRequest.current) return;
       setLocaisList(data || []);
-      const initial = route?.params?.local || data?.[0] || null;
+      const initial = data?.find(item => String(item.id_local) === String(route?.params?.local?.id_local)) || data?.[0] || null;
       if (initial) {
-        loadLocalData(initial.id_local);
+        await loadLocalData(initial.id_local);
       } else {
         setLoading(false);
       }
     } catch (err) {
+      if (request !== loadRequest.current) return;
       console.warn('Erro ao buscar locais:', err);
+      Alert.alert('Erro ao buscar locais', err.message);
       setLoading(false);
     }
   }, [userId, route?.params?.local]);
 
   // Carrega detalhes completos do local selecionado
   const loadLocalData = async (idLocal) => {
+    const request = ++loadRequest.current;
+    setCurrentLocal(null);
     try {
       setLoading(true);
       const detalhes = await parceiroService.getLocalComDetalhes(idLocal);
+      if (request !== loadRequest.current) return;
       if (detalhes) {
         setCurrentLocal(detalhes);
         setNomeLocal(detalhes.nome || '');
@@ -132,20 +149,24 @@ export function EditarLocaisScreen({ navigation, route }) {
         } else {
           setHours(DEFAULT_HOURS);
         }
+
+        // Mapeia eventos
+        setEvents(detalhes.eventos || []);
       }
     } catch (err) {
-      console.warn('Erro ao carregar detalhes do local:', err);
+      if (request === loadRequest.current) Alert.alert('Erro ao carregar local', err.message);
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadLocais();
+    return () => { loadRequest.current += 1; };
   }, [loadLocais]);
 
   const handleSelectPlace = (place) => {
-    loadLocalData(place.id_local);
+    if (!mutationInFlight.current) loadLocalData(place.id_local);
   };
 
   const handleToggleDay = (index) => {
@@ -175,8 +196,26 @@ export function EditarLocaisScreen({ navigation, route }) {
     Alert.alert('Sucesso', 'Horários replicados para todos os dias abertos.');
   };
 
+
+  const handleRemoveEvent = async (idEvento) => {
+    try {
+      await parceiroService.removerEvento(idEvento);
+
+      setEvents((prev) =>
+        prev.filter(
+          (ev) =>
+            ev.id_evento !== idEvento &&
+            ev.id !== idEvento
+        )
+      );
+    } catch (err) {
+      console.error('Erro ao excluir evento:', err);
+      Alert.alert('Erro', 'Não foi possível remover o evento.');
+    }
+  };
+
   const handleToggleVisibility = async (newVal) => {
-    if (!currentLocal?.id_local) return;
+    if (!currentLocal?.id_local || loading || mutationInFlight.current) return;
 
     if (newVal && !isFormComplete) {
       Alert.alert(
@@ -186,24 +225,51 @@ export function EditarLocaisScreen({ navigation, route }) {
       return;
     }
 
+    const idLocal = currentLocal.id_local;
+    mutationInFlight.current = true;
     const previousVal = isVisibleInApp;
     setIsVisibleInApp(newVal);
     setTogglingVisibility(true);
 
     try {
-      await parceiroService.updateLocal(currentLocal.id_local, {
-        visivel: newVal,
-      });
+      await parceiroService.updateLocal(idLocal, { visivel: newVal });
+      const atualizar = item => String(item?.id_local) === String(idLocal) ? { ...item, visivel: newVal } : item;
+      setCurrentLocal(atualizar);
+      setLocaisList(lista => lista.map(atualizar));
     } catch (err) {
       console.error('Erro ao atualizar visibilidade:', err);
       setIsVisibleInApp(previousVal);
       Alert.alert('Erro', err.message || 'Não foi possível alterar a visibilidade do local.');
     } finally {
+      mutationInFlight.current = false;
       setTogglingVisibility(false);
     }
   };
 
+  // Salvar a localização do estabelecimento no Supabase
+  const handleSaveLocation = async (latitude, longitude) => {
+    if (!currentLocal?.id_local) {
+      throw new Error('Nenhum estabelecimento selecionado.');
+    }
+
+    if (loading || mutationInFlight.current) throw new Error('Aguarde o salvamento em andamento.');
+    const idLocal = currentLocal.id_local;
+    mutationInFlight.current = true;
+    setSavingLocation(true);
+    try {
+      const resultado = await parceiroService.atualizarCoordenadasLocal(idLocal, latitude, longitude);
+      const atualizar = item => String(item?.id_local) === String(idLocal)
+        ? { ...item, latitude: resultado.latitude, longitude: resultado.longitude } : item;
+      setCurrentLocal(atualizar);
+      setLocaisList(lista => lista.map(atualizar));
+    } finally {
+      mutationInFlight.current = false;
+      setSavingLocation(false);
+    }
+  };
+
   const handleSave = async () => {
+    if (loading || mutationInFlight.current) return;
     if (!currentLocal?.id_local) {
       Alert.alert('Atenção', 'Nenhum local selecionado para salvar.');
       return;
@@ -217,6 +283,7 @@ export function EditarLocaisScreen({ navigation, route }) {
       return;
     }
 
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       await Promise.all([
@@ -228,7 +295,6 @@ export function EditarLocaisScreen({ navigation, route }) {
           endereco: endereco.trim(),
           bairro: bairro.trim(),
           cidade_uf: cidadeUf.trim(),
-          visivel: isVisibleInApp,
         }),
         parceiroService.salvarHorarios(currentLocal.id_local, hours),
       ]);
@@ -240,6 +306,7 @@ export function EditarLocaisScreen({ navigation, route }) {
       console.error('Erro ao salvar local:', err);
       Alert.alert('Erro ao Salvar', err.message || 'Falha ao atualizar dados no banco.');
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -251,13 +318,19 @@ export function EditarLocaisScreen({ navigation, route }) {
     ]);
   };
 
+  if (loading || !currentLocal) {
+    return <SafeAreaView style={styles.container}>
+      {loading ? <ActivityIndicator /> : <Text>Nenhum estabelecimento disponível. Volte e tente novamente.</Text>}
+      <TouchableOpacity onPress={() => navigation?.goBack()}><Text>Voltar</Text></TouchableOpacity>
+    </SafeAreaView>;
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
+      <KeyboardViewport
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -322,7 +395,7 @@ export function EditarLocaisScreen({ navigation, route }) {
             <Switch
               value={isVisibleInApp}
               onValueChange={handleToggleVisibility}
-              disabled={togglingVisibility}
+              disabled={saving || savingLocation || togglingVisibility}
               trackColor={{ false: '#D1D5DB', true: '#1B1445' }}
               thumbColor="#FFFFFF"
             />
@@ -455,23 +528,16 @@ export function EditarLocaisScreen({ navigation, route }) {
               </View>
             </View>
 
-            {/* Mini Map Card */}
-            <View style={styles.miniMapCard}>
-              {/* Map abstract graphics */}
-              <View style={styles.mapRoadH} />
-              <View style={styles.mapRoadV} />
-              <View style={styles.mapRoadCurve} />
-
-              <View style={styles.mapPinContainer}>
-                <Ionicons name="location" size={32} color="#C1121F" />
-              </View>
-
-              <View style={styles.mapAddressPill}>
-                <Text style={styles.mapAddressPillText} numberOfLines={1}>
-                  {endereco || 'Rua das Flores, 123 - Centro'}
-                </Text>
-              </View>
-            </View>
+            {/* Mapa interativo do estabelecimento */}
+            <LocalizacaoEstabelecimento
+              key={currentLocal?.id_local}
+              local={currentLocal}
+              endereco={endereco}
+              bairro={bairro}
+              cidadeUf={cidadeUf}
+              onSalvar={handleSaveLocation}
+              disabled={saving || togglingVisibility}
+            />
           </View>
 
           {/* Section: Horários de funcionamento */}
@@ -480,7 +546,7 @@ export function EditarLocaisScreen({ navigation, route }) {
 
             <View style={styles.hoursCard}>
               {hours.map((item, idx) => (
-                <View key={item.day} style={styles.hourRow}>
+                <View key={item.day} style={[styles.hourRow, layout.compact && { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
                   <Text style={styles.hourDayLabel}>{item.day}</Text>
 
                   {item.active ? (
@@ -528,6 +594,46 @@ export function EditarLocaisScreen({ navigation, route }) {
             </View>
           </View>
 
+          {/* Section: Eventos e programação */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionHeading}>Eventos e programação</Text>
+            <Text style={styles.sectionSubheading}>
+              Aparecem na página do local e na aba “Hoje” do app.
+            </Text>
+
+            {/* Existing Events List */}
+            {events.map((ev) => {
+              const eventId = ev.id_evento || ev.id;
+              return (
+                <View key={eventId} style={styles.eventCard}>
+                  <View style={styles.eventBadge}>
+                    <Text style={styles.eventBadgeDays}>{ev.dias || ev.days}</Text>
+                    <Text style={styles.eventBadgeTime}>{ev.hora || ev.time}</Text>
+                  </View>
+
+                  <View style={styles.eventDetailsCol}>
+                    <Text style={styles.eventTitle}>{ev.titulo || ev.title}</Text>
+                    {!!(ev.detalhes || ev.details) && (
+                      <Text style={styles.eventDescription}>
+                        {ev.detalhes || ev.details}
+                      </Text>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => handleRemoveEvent(eventId)}
+                    style={styles.eventRemoveButton}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="x" size={16} color="#6B7280" />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+
+          </View>
+
           {/* Footer Actions */}
           <View style={styles.footerRow}>
             <TouchableOpacity
@@ -542,7 +648,7 @@ export function EditarLocaisScreen({ navigation, route }) {
               style={[styles.publishButton, saving && { opacity: 0.7 }]}
               onPress={handleSave}
               activeOpacity={0.85}
-              disabled={saving}
+              disabled={saving || savingLocation || togglingVisibility || !isFormComplete}
             >
               {saving ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
@@ -551,10 +657,11 @@ export function EditarLocaisScreen({ navigation, route }) {
               )}
             </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
+
 }
 
 const styles = StyleSheet.create({
@@ -566,6 +673,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    ...FORM_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 36,
@@ -574,6 +682,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     padding: 4,
   },
@@ -584,6 +695,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   placesRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
@@ -601,6 +713,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   placePillText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -661,20 +775,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     paddingHorizontal: 14,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     fontSize: 13.5,
     color: '#000000',
   },
   textArea: {
-    height: 80,
+    minHeight: 80,
     textAlignVertical: 'top',
     paddingTop: 10,
   },
   twoColsRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 12,
   },
   colFlex: {
+    flexBasis: 150,
+    minWidth: 0,
     flex: 1,
   },
   priceSegmentedContainer: {
@@ -703,7 +821,7 @@ const styles = StyleSheet.create({
   },
   miniMapCard: {
     backgroundColor: '#E8F5E9',
-    height: 95,
+    minHeight: 95,
     borderRadius: 16,
     marginTop: 6,
     position: 'relative',
@@ -790,8 +908,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#1E1848',
     borderRadius: 8,
-    width: 72,
-    height: 38,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    paddingVertical: 10,
     textAlign: 'center',
     fontSize: 13,
     fontWeight: '600',
@@ -818,12 +938,90 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   repeatButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 12,
     fontWeight: '700',
     color: '#22194D',
     textDecorationLine: 'underline',
   },
+  eventCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  eventBadge: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    minWidth: 64,
+  },
+  eventBadgeDays: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  eventBadgeTime: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#166534',
+  },
+  eventDetailsCol: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#000000',
+  },
+  eventDescription: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  eventRemoveButton: {
+    padding: 6,
+  },
+  newEventBox: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#7C6EE6',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 4,
+  },
+  textInputCompact: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#1E1848',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#000000',
+  },
+  addEventButton: {
+    backgroundColor: '#E5E7EB',
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  addEventButtonText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#4B5563',
+  },
   footerRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 12,
     alignItems: 'center',
@@ -840,11 +1038,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   discardButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 14,
     fontWeight: '700',
     color: '#6B7280',
   },
   publishButton: {
+    flexBasis: 150,
+    paddingHorizontal: 12,
     flex: 1,
     backgroundColor: '#958EA5',
     borderRadius: 999,
@@ -852,6 +1054,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   publishButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     fontSize: 14.5,
     fontWeight: '800',
     color: '#FFFFFF',

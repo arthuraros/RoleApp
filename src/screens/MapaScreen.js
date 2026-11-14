@@ -1,3 +1,4 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
@@ -6,13 +7,16 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Platform,
   Modal,
   TextInput,
   Alert,
   Linking,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { responsiveMetrics, TOUCH_TARGET } from '../utils/responsive';
 import { WebView } from 'react-native-webview';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -424,7 +428,7 @@ function generateLeafletHtml(locais, destaqueIds, initialFilters, initialPontoRe
       var count = 0;
 
       allLocais.forEach(function(l) {
-        if (!l.latitude || !l.longitude) return;
+        if (l.latitude == null || l.longitude == null) return;
         var lat = parseFloat(l.latitude);
         var lng = parseFloat(l.longitude);
         if (isNaN(lat) || isNaN(lng)) return;
@@ -558,6 +562,11 @@ function generateLeafletHtml(locais, destaqueIds, initialFilters, initialPontoRe
 }
 
 export function MapaScreen({ navigation }) {
+  const dimensions = useWindowDimensions();
+  const layout = responsiveMetrics({ ...dimensions, insets: useSafeAreaInsets() });
+  const tabBarHeight = useBottomTabBarHeight();
+  const [mapHeight, setMapHeight] = useState(dimensions.height / 2);
+  const [previewHeight, setPreviewHeight] = useState(0);
   const { user } = useAuth();
   const [locais, setLocais] = useState([]);
   const [destaqueIds, setDestaqueIds] = useState(new Set());
@@ -713,7 +722,7 @@ export function MapaScreen({ navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      carregarFavoritos();
+      carregarDados();
       const timer = setTimeout(() => {
         webViewRef.current?.injectJavaScript(
           'if (window.invalidateMap) { window.invalidateMap(); } true;'
@@ -721,7 +730,7 @@ export function MapaScreen({ navigation }) {
       }, 150);
 
       return () => clearTimeout(timer);
-    }, [carregarFavoritos])
+    }, [carregarDados])
   );
 
   const handleToggleFavoritos = () => {
@@ -915,9 +924,9 @@ export function MapaScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Top Floating Header */}
-      <View style={styles.topHeader}>
+      <View style={[styles.topHeader, layout.compact && { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}>
         <View style={styles.topHeaderLeft}>
           <View style={styles.topHeaderIconWrap}>
             <Ionicons name="map" size={20} color="#FFFFFF" />
@@ -994,7 +1003,7 @@ export function MapaScreen({ navigation }) {
       </View>
 
       {/* Map WebView */}
-      <View style={styles.mapWrap}>
+      <View style={[styles.mapWrap, { marginBottom: tabBarHeight + 8 }]} onLayout={event => setMapHeight(event.nativeEvent.layout.height)}>
         <WebView
           ref={webViewRef}
           originWhitelist={['*']}
@@ -1013,13 +1022,12 @@ export function MapaScreen({ navigation }) {
           )}
           onMessage={(event) => handleMessage(event.nativeEvent.data)}
         />
-      </View>
 
       {/* Floating Recenter Button */}
       <TouchableOpacity
         style={[
           styles.recenterButton,
-          selectedLocal ? styles.recenterWithCard : styles.recenterNoCard,
+          { bottom: selectedLocal ? previewHeight + 24 : 12 },
         ]}
         onPress={handleRecenter}
         activeOpacity={0.85}
@@ -1031,7 +1039,7 @@ export function MapaScreen({ navigation }) {
 
       {/* Floating Bottom Place Preview Card */}
       {selectedLocal && (
-        <View style={styles.floatingCard}>
+        <View style={[styles.floatingCard, { maxHeight: Math.max(0, mapHeight - 72) }]} onLayout={event => setPreviewHeight(event.nativeEvent.layout.height)}>
           <TouchableOpacity
             style={styles.cardCloseButton}
             onPress={() => setSelectedLocal(null)}
@@ -1041,6 +1049,7 @@ export function MapaScreen({ navigation }) {
             <Feather name="x" size={16} color="#64748B" />
           </TouchableOpacity>
 
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingTop: 32 }} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
             style={styles.cardContentRow}
             onPress={handleOpenSelected}
@@ -1057,10 +1066,10 @@ export function MapaScreen({ navigation }) {
                   <Text style={styles.destaquePillText}>★ EM DESTAQUE</Text>
                 </View>
               )}
-              <Text style={styles.cardName} numberOfLines={1}>
+              <Text style={styles.cardName}>
                 {selectedLocal.nome}
               </Text>
-              <Text style={styles.cardAddress} numberOfLines={1}>
+              <Text style={styles.cardAddress}>
                 {selectedLocal.endereco || selectedLocal.bairro || 'Brasília - DF'}
               </Text>
               <Text style={styles.cardPrice}>
@@ -1083,8 +1092,10 @@ export function MapaScreen({ navigation }) {
             <Text style={styles.cardActionBtnText}>Ver detalhes</Text>
             <Feather name="arrow-right" size={15} color="#FFFFFF" />
           </TouchableOpacity>
+          </ScrollView>
         </View>
       )}
+      </View>
 
       {/* Modal de Filtro de Distância */}
       <Modal
@@ -1093,6 +1104,8 @@ export function MapaScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => setIsFilterModalVisible(false)}
       >
+        <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardViewport style={{ flex: 1 }}>
         <TouchableOpacity
           style={styles.modalOverlay}
           activeOpacity={1}
@@ -1100,9 +1113,10 @@ export function MapaScreen({ navigation }) {
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={styles.modalCard}
+            style={[styles.modalCard, { maxHeight: layout.modalMaxHeight }]}
             onPress={(e) => e.stopPropagation()}
           >
+            <KeyboardAwareScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
             {/* Header Modal */}
             <View style={styles.modalHeader}>
               <View style={styles.modalTitleWrap}>
@@ -1230,8 +1244,11 @@ export function MapaScreen({ navigation }) {
                 <Text style={styles.modalApplyBtnText}>Aplicar Filtro</Text>
               </TouchableOpacity>
             </View>
+            </KeyboardAwareScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardViewport>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -1243,10 +1260,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8FAFC',
   },
   topHeader: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 54 : 20,
-    left: 14,
-    right: 14,
+    marginHorizontal: 14,
+    marginTop: 10,
+    marginBottom: 8,
     zIndex: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.96)',
     borderRadius: 16,
@@ -1297,8 +1313,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   headerActionBtn: {
+    ...TOUCH_TARGET,
     width: 34,
-    height: 34,
+    minHeight: 44,
     borderRadius: 17,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
@@ -1330,15 +1347,15 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     width: 34,
-    height: 34,
+    minHeight: 44,
     borderRadius: 17,
     backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   hintPill: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 116 : 82,
+    marginHorizontal: 14,
+    marginBottom: 8,
     alignSelf: 'center',
     zIndex: 22,
     backgroundColor: '#FEF3C7',
@@ -1357,6 +1374,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   hintPillText: {
+    flexShrink: 1,
     fontSize: 11,
     fontWeight: '600',
     color: '#92400E',
@@ -1408,7 +1426,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 90,
+    bottom: 12,
     zIndex: 30,
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -1422,6 +1440,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   cardCloseButton: {
+    ...TOUCH_TARGET,
     position: 'absolute',
     top: 10,
     right: 10,
@@ -1489,6 +1508,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   cardActionBtnText: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
@@ -1502,6 +1523,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   modalCard: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+    flexShrink: 1,
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
     padding: 20,
@@ -1531,6 +1556,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   modalCloseBtn: {
+    ...TOUCH_TARGET,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -1546,11 +1572,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   origemRow: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     gap: 10,
     marginBottom: 14,
   },
   origemBtn: {
+    flexBasis: 140,
+    flexGrow: 1,
+    minWidth: 0,
+    minHeight: 44,
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1568,6 +1599,8 @@ const styles = StyleSheet.create({
     borderColor: '#8B5CF6',
   },
   origemBtnText: {
+    flexShrink: 1,
+    textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
@@ -1583,6 +1616,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   presetChip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    maxWidth: '100%',
     paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: 10,
@@ -1619,7 +1655,8 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
   },
   customKmInput: {
     flex: 1,
@@ -1634,6 +1671,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
   },
   modalFooter: {
+    flexWrap: 'wrap',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -1671,8 +1709,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   attributionCard: {
-    position: 'absolute',
-    top: 80,
+    marginHorizontal: 14,
+    marginBottom: 8,
     alignSelf: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     paddingHorizontal: 10,

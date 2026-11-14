@@ -8,6 +8,56 @@ export const parceiroService = {
   // Cadastro retorna uma solicitacao pendente; nunca cria local ou concede acesso.
   enviarSolicitacaoParceria: accessService.enviarSolicitacaoParceria,
   cadastrarNovoParceiro: accessService.enviarSolicitacaoParceria,
+  listarMinhasSolicitacoes: accessService.listarMinhasSolicitacoes,
+  listarMeusLocais: accessService.listarMeusLocais,
+
+
+  async atualizarCoordenadasLocal(idLocal, latitude, longitude) {
+    const numericInput = value => (typeof value === 'number' ||
+      (typeof value === 'string' && value.trim() !== '')) && Number.isFinite(Number(value));
+    if (![idLocal, latitude, longitude].every(numericInput)) {
+      throw new Error('Estabelecimento ou localização inválida.');
+    }
+    const id = Number(idLocal);
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error('Estabelecimento inválido.');
+    }
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      throw new Error('Localização inválida.');
+    }
+
+    const { data, error } = await supabase.rpc(
+      'atualizar_localizacao_parceiro',
+      {
+        p_id_local: id,
+        p_latitude: lat,
+        p_longitude: lng,
+      }
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const row = Array.isArray(data) ? (data.length === 1 ? data[0] : null) : data;
+    if (!row || !numericInput(row.latitude) || !numericInput(row.longitude) ||
+        Math.abs(Number(row.latitude)) > 90 || Math.abs(Number(row.longitude)) > 180 ||
+        String(row.id_local) !== String(id)) {
+      throw new Error('O servidor não confirmou a localização salva. Recarregue o local antes de tentar novamente.');
+    }
+    return { ...row, latitude: Number(row.latitude), longitude: Number(row.longitude) };
+  },
 
   /**
    * Busca os estabelecimentos vinculados ao parceiro
@@ -44,7 +94,7 @@ export const parceiroService = {
 
     if (lError) throw new Error(lError.message);
 
-    const [{ data: horarios }, { data: eventos }] = await Promise.all([
+    const [horariosResult, eventosResult] = await Promise.all([
       supabase
         .from('horarios_funcionamento')
         .select('*')
@@ -57,10 +107,12 @@ export const parceiroService = {
         .order('created_at', { ascending: false }),
     ]);
 
+    if (horariosResult.error) throw new Error(horariosResult.error.message);
+    if (eventosResult.error) throw new Error(eventosResult.error.message);
     return {
       ...local,
-      horarios: horarios || [],
-      eventos: eventos || [],
+      horarios: horariosResult.data || [],
+      eventos: eventosResult.data || [],
     };
   },
 

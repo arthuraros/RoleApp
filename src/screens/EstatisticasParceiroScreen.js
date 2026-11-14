@@ -1,3 +1,4 @@
+import { PAGE_CONTENT } from '../utils/responsive';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -391,6 +392,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EAE8F4',
   },
   scrollContent: {
+    ...PAGE_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 32,
@@ -399,6 +401,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     padding: 4,
   },
@@ -429,6 +434,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroMetricItem: {
+    minWidth: 0,
     flex: 1,
   },
   heroMetricValue: {
@@ -499,6 +505,8 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   chartHeader: {
+    flexWrap: 'wrap',
+    gap: 6,
     flexDirection: 'row',
     alignItems: 'baseline',
     marginBottom: 8,
@@ -530,7 +538,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    height: 140,
+    minHeight: 190,
     paddingHorizontal: 2,
     zIndex: 2,
   },
@@ -551,6 +559,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#B91C1C',
   },
   barLabel: {
+    maxWidth: '100%',
+    textAlign: 'center',
     fontSize: 11,
     fontWeight: '600',
     color: '#6B7280',

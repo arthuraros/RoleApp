@@ -3,6 +3,70 @@ import assert from 'node:assert/strict';
 import { createProfileService } from '../src/services/profileService.js';
 import { getPermissions } from '../src/utils/permissions.js';
 
+test('edicao pessoal usa identidade autenticada e altera somente nome', async () => {
+  const calls = [];
+  const client = {
+    auth: { getUser: async () => ({ data: { user: { id: 'real', user_metadata: { role: 'admin' } } } }) },
+    from(table) {
+      assert.equal(table, 'usuarios');
+      return { update(payload) {
+        calls.push(payload);
+        return { eq(key, id) {
+          assert.equal(key, 'id_usuario'); assert.equal(id, 'real');
+          return { select(columns) {
+            assert.equal(columns, 'id_usuario, nome');
+            return { single: async () => ({ data: { id_usuario: 'real', ...payload } }) };
+          } };
+        } };
+      } };
+    },
+  };
+  const service = createProfileService(client);
+  assert.deepEqual(await service.updateName(' Maria '), { id_usuario: 'real', nome: 'Maria' });
+  assert.deepEqual(calls, [{ nome: 'Maria' }]);
+  for (const name of [null, '', ' ', { nome: 'A', role: 'admin' }, 'A'.repeat(121)]) {
+    await assert.rejects(service.updateName(name), /nome/);
+  }
+  assert.equal(calls.length, 1);
+});
+
+test('edicao pessoal sem autenticacao nao consulta nem escreve', async () => {
+  const service = createProfileService({ auth: { getUser: async () => ({ data: { user: null } }) },
+    from: () => assert.fail('Consulta indevida') });
+  await assert.rejects(service.updateName('Maria'), /Entre/);
+  await assert.rejects(service.getEditableProfile(), /Entre/);
+  await assert.rejects(service.getMyReviews(), /Entre/);
+});
+
+test('leitura de nome e avaliacoes filtra conta atual e rejeita dados de terceiros', async () => {
+  let wrongAccount = false;
+  const service = createProfileService({
+    auth: { getUser: async () => ({ data: { user: { id: 'real' } } }) },
+    from(table) { return { select(columns) {
+      assert.equal(columns, table === 'usuarios' ? 'id_usuario, nome, foto_url, saldo' : 'id_avaliacao, id_usuario, id_local, nota, comentario');
+      return { eq(key, id) {
+        assert.equal(key, 'id_usuario'); assert.equal(id, 'real');
+        const row = { id_usuario: wrongAccount ? 'outra' : 'real', nome: 'Ana', saldo: 32.5 };
+        return { maybeSingle: async () => ({ data: row }), order: async () => ({ data: [row] }) };
+      } };
+    } }; },
+  });
+  assert.equal((await service.getEditableProfile()).nome, 'Ana');
+  assert.equal((await service.getEditableProfile()).saldo, 32.5);
+  assert.equal((await service.getMyReviews()).length, 1);
+  wrongAccount = true;
+  await assert.rejects(service.getEditableProfile(), /carregar/);
+  await assert.rejects(service.getMyReviews(), /carregar/);
+});
+
+test('UPDATE bloqueado ou sem linha confirmada nao informa sucesso', async () => {
+  for (const result of [{ data: null }, { error: { message: 'segredo' } }, { data: { id_usuario: 'outra' } }]) {
+    const service = createProfileService({ auth: { getUser: async () => ({ data: { user: { id: 'real' } } }) },
+      from: () => ({ update: () => ({ eq: () => ({ select: () => ({ single: async () => result }) }) }) }) });
+    await assert.rejects(service.updateName('Maria'), { message: 'Não foi possível salvar seu nome. Tente novamente.' });
+  }
+});
+
 function mockClient({ role = 'usuario', id = 'user-a', error = null, authError = null,
   returnedId = id, metadata = {} } = {}) {
   const calls = [];

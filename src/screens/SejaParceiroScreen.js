@@ -1,15 +1,14 @@
+import { KeyboardViewport, KeyboardAwareScrollView } from '../components/KeyboardForm';
+import { FORM_CONTENT } from '../utils/responsive';
 import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Image,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -93,10 +92,12 @@ export function SejaParceiroScreen({ navigation }) {
   const [formY, setFormY] = useState(0);
   const [expandedFaqs, setExpandedFaqs] = useState({});
 
-  const [nome, setNome] = useState(user?.nome || user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [estabelecimento, setEstabelecimento] = useState('');
-  const [cidadeEstado, setCidadeEstado] = useState('');
+  
+const [nome, setNome] = useState(user?.nome || user?.name || '');
+const [email, setEmail] = useState(user?.email || '');
+const [telefone, setTelefone] = useState('');
+const [estabelecimento, setEstabelecimento] = useState('');
+const [cidadeEstado, setCidadeEstado] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleScrollToForm = () => {
@@ -117,16 +118,27 @@ export function SejaParceiroScreen({ navigation }) {
       Alert.alert('Campos obrigatórios', 'Por favor, preencha todos os campos do formulário.');
       return;
     }
+const telefoneLimpo = telefone.replace(/\D/g, '');
 
+if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+  Alert.alert(
+    'Telefone inválido',
+    'Informe um telefone com DDD.'
+  );
+  return;
+}
     setLoading(true);
-    try {
-      await parceiroService.enviarSolicitacaoParceria({
-        idUsuario: user?.id_usuario || user?.id || null,
-        nome: nome.trim(),
-        email: email.trim(),
-        estabelecimento: estabelecimento.trim(),
-        cidadeEstado: cidadeEstado.trim(),
-      });
+    
+try {
+  await parceiroService.enviarSolicitacaoParceria({
+    idUsuario: user?.id_usuario || user?.id || null,
+    nome: nome.trim(),
+    email: email.trim(),
+    telefone: telefone.replace(/\D/g, ''),
+    estabelecimento: estabelecimento.trim(),
+    cidadeEstado: cidadeEstado.trim(),
+  });
+
 
       Alert.alert(
         'Solicitação enviada!',
@@ -151,11 +163,10 @@ export function SejaParceiroScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
+      <KeyboardViewport
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
+        <KeyboardAwareScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -364,6 +375,19 @@ export function SejaParceiroScreen({ navigation }) {
             </View>
 
             <View style={styles.inputGroup}>
+  <Text style={styles.inputLabel}>Telefone / WhatsApp</Text>
+  <TextInput
+    style={styles.input}
+    placeholder="(61) 99999-9999"
+    placeholderTextColor="#8E8E93"
+    keyboardType="phone-pad"
+    value={telefone}
+    onChangeText={setTelefone}
+    maxLength={16}
+  />
+</View>
+
+            <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Nome do estabelecimento</Text>
               <TextInput
                 style={styles.input}
@@ -419,8 +443,8 @@ export function SejaParceiroScreen({ navigation }) {
             </View>
             <Text style={styles.footerCopyright}>©2026 RolêApp</Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </KeyboardViewport>
     </SafeAreaView>
   );
 }
@@ -434,6 +458,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    ...FORM_CONTENT,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 28,
@@ -445,6 +470,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   backButton: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     padding: 4,
   },
   alreadyPartnerText: {
@@ -504,6 +532,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   ctaButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
@@ -519,6 +549,8 @@ const styles = StyleSheet.create({
     marginBottom: 34,
   },
   statItem: {
+    flex: 1,
+    minWidth: 0,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -538,7 +570,8 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     width: 1,
-    height: 44,
+    minHeight: 44,
+    paddingVertical: 10,
     backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   howItWorksSection: {
@@ -571,6 +604,7 @@ const styles = StyleSheet.create({
     color: '#4C3BA3',
   },
   stepTitle: {
+    flex: 1,
     fontSize: 16.5,
     fontWeight: '700',
     color: '#000000',
@@ -740,7 +774,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1E1848',
     borderRadius: 8,
-    height: 42,
+    minHeight: 44,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     fontSize: 13,
     color: '#0F172A',
@@ -755,6 +790,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 10,
   },
   submitButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: '800',
@@ -778,6 +815,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   footerLinks: {
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,

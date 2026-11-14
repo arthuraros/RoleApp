@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 export function AuthInput({
@@ -15,6 +15,8 @@ export function AuthInput({
   style,
   ...props
 }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+
   return (
     <View style={[styles.container, style]}>
       <View style={styles.labelRow}>
@@ -36,11 +38,22 @@ export function AuthInput({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="#64748B"
-          secureTextEntry={secureTextEntry}
+          secureTextEntry={secureTextEntry && !passwordVisible}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
           {...props}
         />
+        {secureTextEntry ? (
+          <TouchableOpacity
+            style={styles.visibilityButton}
+            onPress={() => setPasswordVisible(visible => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={`${passwordVisible ? 'Ocultar senha' : 'Mostrar senha'}: ${label || 'Senha'}`}
+            disabled={props.editable === false}
+          >
+            <Feather name={passwordVisible ? 'eye-off' : 'eye'} size={20} color="#475569" />
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -72,15 +85,23 @@ const styles = StyleSheet.create({
     borderColor: '#090A1A',
     borderRadius: 10,
     paddingHorizontal: 12,
-    height: 46,
+    minHeight: 46,
   },
   icon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 14,
     color: '#0F172A',
-    paddingVertical: 0,
+    paddingVertical: 10,
+  },
+  visibilityButton: {
+    width: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -10,
   },
 });

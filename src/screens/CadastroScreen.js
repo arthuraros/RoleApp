@@ -157,7 +157,7 @@ export function CadastroScreen({ navigation }) {
       {/* Link para Login */}
       <View style={styles.footerLinkRow}>
         <Text style={styles.footerText}>Já tem uma conta? </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+        <TouchableOpacity style={styles.textLinkButton} onPress={() => navigation.navigate('Login')}>
           <Text style={styles.footerLinkBold}>Entre</Text>
         </TouchableOpacity>
       </View>
@@ -173,6 +173,7 @@ export function CadastroScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  textLinkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   termsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -181,6 +182,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   checkboxWrapper: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingRight: 6,
   },
   checkbox: {
@@ -198,6 +202,8 @@ const styles = StyleSheet.create({
     borderColor: '#090A1A',
   },
   termsTextWrapper: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
@@ -215,7 +221,9 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#090A1A',
     borderRadius: 12,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -230,11 +238,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   primaryButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   footerLinkRow: {
+    flexWrap: 'wrap',
+    rowGap: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

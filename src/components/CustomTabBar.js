@@ -1,62 +1,121 @@
+
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { BottomTabBarHeightCallbackContext } from '@react-navigation/bottom-tabs';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, spacing, normalizeFont } from '../utils/theme';
 
-function TabButton({ label, iconName, isFocused, onPress, onLongPress }) {
-  const iconColor = isFocused ? colors.white : colors.primary;
-  const textColor = isFocused ? colors.white : colors.primary;
+import {
+  colors,
+  radius,
+  spacing,
+} from '../utils/theme';
+
+function TabButton({
+  label,
+  iconName,
+  isFocused,
+  onPress,
+  onLongPress,
+  compact,
+}) {
+  const iconColor = isFocused
+    ? colors.white
+    : colors.primary;
 
   return (
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
       onLongPress={onLongPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: isFocused }}
+      accessibilityLabel={label}
       style={[
         styles.button,
-        isFocused ? styles.buttonFocused : styles.buttonUnfocused,
+        compact && styles.buttonCompact,
+        isFocused
+          ? styles.buttonFocused
+          : styles.buttonUnfocused,
       ]}
-      accessibilityRole="button"
-      accessibilityState={isFocused ? { selected: true } : {}}
-      accessibilityLabel={label}
     >
-      <Feather name={iconName} size={22} color={iconColor} style={styles.icon} />
-      <Text style={[styles.label, { color: textColor }]}>
+      <Feather
+        name={iconName}
+        size={compact ? 19 : 22}
+        color={iconColor}
+        style={styles.icon}
+      />
+
+      <Text
+        numberOfLines={2}
+        style={[
+          styles.label,
+          compact && styles.labelCompact,
+          { color: iconColor },
+        ]}
+      >
         {label}
       </Text>
     </TouchableOpacity>
   );
 }
 
-export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
+export function CustomTabBar({
+  state,
+  descriptors,
+  navigation,
+  blurTarget,
+}) {
   const insets = useSafeAreaInsets();
+  const reportHeight = React.useContext(BottomTabBarHeightCallbackContext);
 
-  const getTabIcon = (routeName) => {
+  // Ajusta o menu quando existem 5 ou mais abas
+  const compact = state.routes.length >= 5;
+
+  const getTabIcon = routeName => {
     switch (routeName) {
       case 'Home':
-      case 'Início':
         return 'home';
+
       case 'Favoritos':
         return 'heart';
+
+      case 'RolesScreen':
+        return 'compass';
+
       case 'Mapa':
         return 'map';
+
       case 'Perfil':
         return 'user';
+
       case 'MeusLugares':
         return 'briefcase';
+
       default:
         return 'circle';
     }
   };
 
-  const getTabLabel = (routeName) => {
+  const getTabLabel = routeName => {
     switch (routeName) {
       case 'Home':
         return 'Início';
+
+      case 'RolesScreen':
+        return 'Rolês';
+
       case 'MeusLugares':
-        return 'Meus Lugares';
+        // Nome reduzido na barra para caber em 5 abas
+        return 'Lugares';
+
       default:
         return routeName;
     }
@@ -64,10 +123,14 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
 
   return (
     <View
+      onLayout={event => reportHeight?.(event.nativeEvent.layout.height)}
       style={[
         styles.wrapper,
+        compact && styles.wrapperCompact,
         {
-          paddingBottom: Math.max(insets.bottom, 10),
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingLeft: Math.max((insets.left || 0) + 8, compact ? 6 : spacing.md),
+          paddingRight: Math.max((insets.right || 0) + 8, compact ? 6 : spacing.md),
         },
       ]}
     >
@@ -80,14 +143,9 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
       >
         <View style={styles.container}>
           {state.routes.map((route, index) => {
-            const { options } = descriptors[route.key];
             const isFocused = state.index === index;
-            const label = options.tabBarLabel !== undefined
-              ? options.tabBarLabel
-              : options.title !== undefined
-              ? options.title
-              : getTabLabel(route.name);
 
+            const label = getTabLabel(route.name);
             const iconName = getTabIcon(route.name);
 
             const onPress = () => {
@@ -98,7 +156,10 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
               });
 
               if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name, route.params);
+                navigation.navigate(
+                  route.name,
+                  route.params
+                );
               }
             };
 
@@ -117,6 +178,7 @@ export function CustomTabBar({ state, descriptors, navigation, blurTarget }) {
                 isFocused={isFocused}
                 onPress={onPress}
                 onLongPress={onLongPress}
+                compact={compact}
               />
             );
           })}
@@ -132,48 +194,76 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'transparent',
     paddingHorizontal: spacing.md,
     paddingTop: 6,
-  },
-  blurContainer: {
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.75)',
     backgroundColor: 'transparent',
   },
+
+  wrapperCompact: {
+    paddingHorizontal: 6,
+  },
+
+  blurContainer: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.75)',
+    backgroundColor: 'transparent',
+  },
+
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    backgroundColor: 'transparent',
+    paddingVertical: 5,
+    paddingHorizontal: 3,
   },
+
   button: {
     flex: 1,
+    minWidth: 0,
     marginHorizontal: 3,
     paddingVertical: 10,
+    paddingHorizontal: 2,
     borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 56,
   },
+
+  buttonCompact: {
+    marginHorizontal: 2,
+    minHeight: 52,
+    paddingHorizontal: 1,
+    paddingVertical: 7,
+  },
+
   buttonFocused: {
     backgroundColor: colors.primary,
   },
+
   buttonUnfocused: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: colors.primary,
   },
+
   icon: {
     marginBottom: 4,
   },
+
   label: {
-    fontSize: normalizeFont(11),
+    fontSize: 11,
     fontWeight: '700',
+    textAlign: 'center',
+    width: '100%',
+  },
+
+  labelCompact: {
+    fontSize: 11,
+    marginTop: 1,
   },
 });
-

@@ -17,6 +17,8 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { FavoritosScreen } from '../screens/FavoritosScreen';
 import { MapaScreen } from '../screens/MapaScreen';
 import { PerfilScreen } from '../screens/PerfilScreen';
+import { EditarPerfilScreen, ConfiguracoesScreen, AjudaSuporteScreen,
+  MinhasAvaliacoesScreen, TermosUsoScreen, PrivacidadeScreen } from '../screens/PerfilOpcoesScreens';
 import { RolesScreen } from '../screens/RolesScreen';
 import { RoleDetalhesScreen } from '../screens/RoleDetalhesScreen';
 import { SejaParceiroScreen } from '../screens/SejaParceiroScreen';
@@ -75,6 +77,12 @@ function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="EditarPerfil" component={EditarPerfilScreen} />
+      <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} />
+      <Stack.Screen name="AjudaSuporte" component={AjudaSuporteScreen} />
+      <Stack.Screen name="MinhasAvaliacoes" component={MinhasAvaliacoesScreen} />
+      <Stack.Screen name="TermosUso" component={TermosUsoScreen} />
+      <Stack.Screen name="Privacidade" component={PrivacidadeScreen} />
       <Stack.Screen name="SejaParceiro" component={SejaParceiroScreen} />
       {isPartner && <Stack.Group>
         <Stack.Screen name="EstatisticasParceiro" component={EstatisticasParceiroScreen} />

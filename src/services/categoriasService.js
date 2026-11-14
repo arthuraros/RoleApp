@@ -11,7 +11,7 @@ export const categoriasService = {
       .order('nome', { ascending: true });
 
     if (error) throw new Error(error.message);
-    return data;
+    return data ?? [];
   },
 
   /**
@@ -28,6 +28,6 @@ export const categoriasService = {
     if (error) throw new Error(error.message);
     
     // Retorna um array único com os IDs dos locais correspondentes
-    return [...new Set(data.map(item => item.id_local))];
+    return [...new Set((data ?? []).map(item => item.id_local))];
   }
 };

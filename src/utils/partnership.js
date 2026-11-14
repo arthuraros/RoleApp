@@ -2,6 +2,55 @@ export const REQUEST_STATUS = Object.freeze({
   PENDING: 'pendente', REVIEW: 'em_analise', APPROVED: 'aprovado', REJECTED: 'rejeitado',
 });
 
+
+export function partnershipRequestPayload({
+  nome,
+  email,
+  telefone,
+  estabelecimento,
+  cidadeEstado,
+} = {}) {
+  const fields = [nome, email, telefone, estabelecimento, cidadeEstado];
+
+  if (fields.some(value => typeof value !== 'string' || !value.trim())) {
+    throw new Error('Preencha todos os campos da solicitação.');
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    throw new Error('Informe um e-mail válido para contato.');
+  }
+
+  const telefoneLimpo = telefone.replace(/\D/g, '');
+
+  if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+    throw new Error('Informe um telefone válido com DDD.');
+  }
+
+  return {
+    nome: nome.trim(),
+    email: email.trim(),
+    telefone: telefoneLimpo,
+    estabelecimento: estabelecimento.trim(),
+    cidade_estado: cidadeEstado.trim(),
+  };
+}
+
+
+const requestKey = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+
+// Conveniencia de interface; nao substitui unicidade/concorrencia/autorizacao no banco.
+export function findExistingPartnershipRequest(requests, form) {
+  return requests.find(request =>
+    ['pendente', 'em_analise', 'aprovado'].includes(request.status) &&
+    requestKey(request.estabelecimento) === requestKey(form.estabelecimento) &&
+    requestKey(request.cidade_estado) === requestKey(form.cidadeEstado));
+}
+
+export function partnershipStatusLabel(status) {
+  return ({ pendente: 'Pendente de análise', em_analise: 'Em análise', aprovado: 'Aprovada', rejeitado: 'Não aprovada' })[status]
+    || 'Status indisponível';
+}
+
 export function validateDecision({ reviewId, decisao, acao, motivo, idLocalExistente,
   identidadeValidada, duplicidadeRevisada, novoLocal }) {
   if (!reviewId || !motivo?.trim() || !['aprovado', 'rejeitado', 'em_analise'].includes(decisao)) {

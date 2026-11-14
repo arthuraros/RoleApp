@@ -84,7 +84,7 @@ export function RecuperacaoScreen({ navigation }) {
       {/* Link para Login */}
       <View style={styles.footerLinkRow}>
         <Text style={styles.footerText}>Já tem uma conta? </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+        <TouchableOpacity style={styles.textLinkButton} onPress={() => navigation.navigate('Login')}>
           <Text style={styles.footerLinkBold}>Entre</Text>
         </TouchableOpacity>
       </View>
@@ -93,6 +93,7 @@ export function RecuperacaoScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  textLinkButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   successBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -117,7 +118,9 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#090A1A',
     borderRadius: 12,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
@@ -133,11 +136,15 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   primaryButtonText: {
+    textAlign: 'center',
+    flexShrink: 1,
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
   footerLinkRow: {
+    flexWrap: 'wrap',
+    rowGap: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

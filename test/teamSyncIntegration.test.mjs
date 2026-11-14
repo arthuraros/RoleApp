@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderScreen } from './helpers/render-screen.mjs';
 import { profileDisplayName } from '../src/utils/profile.js';
+import * as campaigns from '../src/utils/campaigns.js';
 
 // Integracao offline dos commits da equipe com os fluxos locais preservados.
 test('sync: Perfil conserva favoritos, saldo e entrada para os novos roles', async () => {
@@ -41,6 +42,7 @@ async function campaignFixture(visible) {
   const calls = [], place = { id_local: 8, nome: 'Fixture offline', visivel: visible };
   const ui = renderScreen(new URL('../src/screens/ImpulsionarScreen.js', import.meta.url), 'ImpulsionarScreen',
     { navigation: {}, route: { params: { local: place } } }, {
+      '../utils/campaigns.js': campaigns,
       '../contexts/AuthContext': { useAuth: () => ({ user: { id: 'fixture' } }) },
       '../services/parceiroService': { parceiroService: {
         getLocaisDoParceiro: async () => [place], getCampanhas: async () => [],

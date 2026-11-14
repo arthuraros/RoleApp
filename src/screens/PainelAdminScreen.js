@@ -26,21 +26,25 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AccessGate } from '../components/AccessGate';
 import { AdminPlacesPanel } from '../components/AdminPlacesPanel';
+import { AdminCampaignsPanel } from '../components/AdminCampaignsPanel';
+import { AdminAccessPanel } from '../components/AdminAccessPanel';
+import { AdminSupportDraftForm } from '../components/AdminSupportDraftForm';
 import { adminService } from '../services/adminService';
 
 const ROXO = '#6820C9';
 const ESCURO = '#1D173F';
 const FUNDO = '#F8F7FC';
+const APROVACAO_COMERCIAL_VALIDADA = false;
 
 // Disponibilidade da interface, não uma fonte de autorização do backend.
 const SECOES = [
   { id: 'solicitacoes', nome: 'Solicitações', icone: 'clipboard-outline' },
   { id: 'locais', nome: 'Locais', icone: 'storefront-outline',
-    descricao: 'A consulta e a gestão de estabelecimentos estarão disponíveis em uma próxima etapa.' },
+    descricao: 'A interface está integrada; as operações aguardam validação do contrato do Supabase.' },
   { id: 'campanhas', nome: 'Campanhas', icone: 'megaphone-outline',
-    descricao: 'A análise e o acompanhamento de campanhas estarão disponíveis em uma próxima etapa.' },
+    descricao: 'A interface está integrada; as operações aguardam validação do contrato do Supabase.' },
   { id: 'administradores', nome: 'Administradores', icone: 'shield-checkmark-outline',
-    descricao: 'A consulta e a gestão de acessos administrativos estarão disponíveis em uma próxima etapa.' },
+    descricao: 'A interface está integrada; as operações aguardam validação do contrato do Supabase.' },
 ];
 
 const ABAS = [
@@ -311,6 +315,14 @@ async function abrirSolicitacao(item) {
   // Preparar aprovação ou reprovação
   function confirmarDecisao(decisao) {
     if (!selecionada || decidindo || encaminhando) return;
+
+    if (decisao === 'aprovado' && !APROVACAO_COMERCIAL_VALIDADA) {
+      Alert.alert(
+        'Aprovação bloqueada',
+        'O fluxo administrativo atual não cria o vínculo comercial e a auditoria exigidos. A RPC segura de revisão ainda precisa ser validada.'
+      );
+      return;
+    }
 
     if (selecionada.status !== 'em_analise') {
       Alert.alert(
@@ -683,78 +695,82 @@ async function abrirSolicitacao(item) {
                 editable={!decidindo}
               />
 
-              <Text style={styles.campoLabel}>
-                ID do estabelecimento confirmado
-              </Text>
+              {APROVACAO_COMERCIAL_VALIDADA ? <>
+                <Text style={styles.campoLabel}>
+                  ID do estabelecimento confirmado
+                </Text>
 
-              <TextInput
-                style={styles.campoDecisao}
-                placeholder="Ex.: 8"
-                placeholderTextColor="#9990A6"
-                keyboardType="number-pad"
-                value={idLocalDecisao}
-                onChangeText={setIdLocalDecisao}
-                editable={!decidindo}
-              />
-
-              <Text style={styles.formDescricao}>
-                Para aprovar, informe o ID de um
-                estabelecimento já cadastrado e
-                pertencente ao solicitante.
-              </Text>
-
-              <TouchableOpacity
-                style={styles.confirmacaoLinha}
-                disabled={decidindo}
-                onPress={() =>
-                  setIdentidadeConfirmada(valor => !valor)
-                }
-              >
-                <Ionicons
-                  name={
-                    identidadeConfirmada
-                      ? 'checkbox'
-                      : 'square-outline'
-                  }
-                  size={24}
-                  color={ROXO}
+                <TextInput
+                  style={styles.campoDecisao}
+                  placeholder="Ex.: 8"
+                  placeholderTextColor="#9990A6"
+                  keyboardType="number-pad"
+                  value={idLocalDecisao}
+                  onChangeText={setIdLocalDecisao}
+                  editable={!decidindo}
                 />
 
-                <Text style={styles.confirmacaoTexto}>
-                  Confirmei a identidade e a
-                  propriedade do estabelecimento.
+                <Text style={styles.formDescricao}>
+                  Para aprovar, informe o ID de um
+                  estabelecimento já cadastrado e
+                  pertencente ao solicitante.
                 </Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.confirmacaoLinha}
-                disabled={decidindo}
-                onPress={() =>
-                  setDuplicidadeRevisada(valor => !valor)
-                }
-              >
-                <Ionicons
-                  name={
-                    duplicidadeRevisada
-                      ? 'checkbox'
-                      : 'square-outline'
+                <TouchableOpacity
+                  style={styles.confirmacaoLinha}
+                  disabled={decidindo}
+                  onPress={() =>
+                    setIdentidadeConfirmada(valor => !valor)
                   }
-                  size={24}
-                  color={ROXO}
-                />
+                >
+                  <Ionicons
+                    name={
+                      identidadeConfirmada
+                        ? 'checkbox'
+                        : 'square-outline'
+                    }
+                    size={24}
+                    color={ROXO}
+                  />
 
-                <Text style={styles.confirmacaoTexto}>
-                  Verifiquei possíveis solicitações
-                  duplicadas e conflitos.
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.confirmacaoTexto}>
+                    Confirmei a identidade e a
+                    propriedade do estabelecimento.
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.confirmacaoLinha}
+                  disabled={decidindo}
+                  onPress={() =>
+                    setDuplicidadeRevisada(valor => !valor)
+                  }
+                >
+                  <Ionicons
+                    name={
+                      duplicidadeRevisada
+                        ? 'checkbox'
+                        : 'square-outline'
+                    }
+                    size={24}
+                    color={ROXO}
+                  />
+
+                  <Text style={styles.confirmacaoTexto}>
+                    Verifiquei possíveis solicitações
+                    duplicadas e conflitos.
+                  </Text>
+                </TouchableOpacity>
+              </> : <Text accessibilityRole="alert" style={styles.formDescricao}>
+                Aprovação bloqueada: a RPC administrativa atual não cria o vínculo comercial e a auditoria exigidos. A RPC segura de revisão ainda aguarda validação.
+              </Text>}
 
               <TouchableOpacity
                 style={[
                   styles.botaoAprovar,
-                  decidindo && styles.desabilitado,
+                  (decidindo || !APROVACAO_COMERCIAL_VALIDADA) && styles.desabilitado,
                 ]}
-                disabled={decidindo}
+                disabled={decidindo || !APROVACAO_COMERCIAL_VALIDADA}
                 onPress={() =>
                   confirmarDecisao('aprovado')
                 }
@@ -769,7 +785,7 @@ async function abrirSolicitacao(item) {
                       color="#FFFFFF"
                     />
                     <Text style={styles.botaoDecisaoTexto}>
-                      Aprovar parceria
+                      {APROVACAO_COMERCIAL_VALIDADA ? 'Aprovar parceria' : 'Aprovação bloqueada'}
                     </Text>
                   </>
                 )}
@@ -970,7 +986,13 @@ async function abrirSolicitacao(item) {
             ))}
           </ScrollView>
 
-          {secao === 'locais' ? <AdminPlacesPanel /> : secao !== 'solicitacoes' ? (
+          {secao === 'locais' ? <>
+            <AdminPlacesPanel />
+            <AdminSupportDraftForm key="locais" resource="locais" />
+          </> : secao === 'campanhas' ? <>
+            <AdminCampaignsPanel />
+            {!adminService.campanhas?.available && <AdminSupportDraftForm key="campanhas" resource="campanhas" />}
+          </> : secao === 'administradores' ? <AdminAccessPanel /> : secao !== 'solicitacoes' ? (
             <View style={styles.preparacao}>
               <Ionicons name={secaoAtual.icone} size={36} color={ROXO} />
               <Text accessibilityRole="header" style={styles.secaoTitulo}>{secaoAtual.nome}</Text>

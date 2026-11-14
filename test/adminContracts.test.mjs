@@ -12,23 +12,30 @@ function rpcFixture(error = null) {
   return calls;
 }
 
-test('RA-11: contratos comerciais preservam RPCs e não enviam papel/ator do cliente', async () => {
+test('RA-11: fluxo comercial bloqueia aprovação insegura e preserva reprovação sem papel/ator', async () => {
   const calls = rpcFixture();
   await adminService.encaminharParaDecisao(5, ' Observação verificada ');
-  await adminService.decidirParceria({ idSolicitacao: 5, decisao: 'aprovado', justificativa: ' Justificativa verificada ',
-    idLocal: 8, identidadeConfirmada: true, duplicidadeRevisada: true, actor: 'forjado', role: 'admin' });
+  await assert.rejects(
+    adminService.decidirParceria({ idSolicitacao: 5, decisao: 'aprovado', justificativa: ' Justificativa verificada ',
+      idLocal: 8, identidadeConfirmada: true, duplicidadeRevisada: true, actor: 'forjado', role: 'admin' }),
+    { code: 'ADMIN_APPROVAL_CONTRACT_BLOCKED' },
+  );
+  await adminService.decidirParceria({ idSolicitacao: 5, decisao: 'rejeitado', justificativa: ' Justificativa verificada ',
+    actor: 'forjado', role: 'admin' });
   await adminService.obterDetalhesDecisao(5);
   assert.deepEqual(calls, [
     { name: 'encaminhar_solicitacao_decisao', args: { p_id_solicitacao: 5, p_observacao: 'Observação verificada' } },
-    { name: 'decidir_solicitacao_comercial', args: { p_id_solicitacao: 5, p_decisao: 'aprovado',
-      p_justificativa: 'Justificativa verificada', p_id_local: 8, p_identidade_confirmada: true, p_duplicidade_revisada: true } },
+    { name: 'decidir_solicitacao_comercial', args: { p_id_solicitacao: 5, p_decisao: 'rejeitado',
+      p_justificativa: 'Justificativa verificada', p_id_local: null, p_identidade_confirmada: false, p_duplicidade_revisada: false } },
     { name: 'obter_detalhe_decisao_admin', args: { p_id_solicitacao: 5 } },
   ]);
 });
 
-test('RA-11: falha das três RPCs comerciais não tenta escrita direta ou endpoint alternativo', async () => {
+test('RA-11: falha das RPCs comerciais não tenta escrita direta ou endpoint alternativo', async () => {
   const calls = rpcFixture({ message: 'Negado pela fixture' });
   await assert.rejects(adminService.encaminharParaDecisao(5, 'Observação verificada'), /Negado/);
+  await assert.rejects(adminService.decidirParceria({ idSolicitacao: 5, decisao: 'aprovado', justificativa: 'Justificativa verificada',
+    idLocal: 8, identidadeConfirmada: true, duplicidadeRevisada: true }), { code: 'ADMIN_APPROVAL_CONTRACT_BLOCKED' });
   await assert.rejects(adminService.decidirParceria({ idSolicitacao: 5, decisao: 'rejeitado', justificativa: 'Justificativa verificada' }), /Negado/);
   await assert.rejects(adminService.obterDetalhesDecisao(5), /Negado/);
   assert.equal(calls.length, 3);
@@ -56,5 +63,23 @@ test('RA-11: diagnóstico SQL só lê catálogo e não executa contratos comerci
   for (const name of ['encaminhar_solicitacao_decisao', 'decidir_solicitacao_comercial', 'obter_detalhe_decisao_admin']) {
     assert.ok(sql.includes(`('${name}')`));
     assert.ok(!new RegExp(`SELECT\\s+(?:public\\.)?${name}\\s*\\(`, 'i').test(statements));
+  }
+});
+
+test('diagnóstico de dependências pendentes é somente leitura e retorna corpos e ACLs', () => {
+  const sql = fs.readFileSync(new URL('../supabase/diagnostics/20261114_admin_pending_dependencies_readonly.sql', import.meta.url), 'utf8');
+  const statements = sql.replace(/--[^\n]*/g, '').replace(/'(?:''|[^'])*'/g, "''");
+  assert.match(statements, /^\s*BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;/);
+  assert.match(statements, /pg_get_functiondef\(p\.oid\)/);
+  assert.match(statements, /aclexplode/);
+  assert.match(statements, /has_function_privilege/);
+  assert.match(statements, /ROLLBACK;\s*$/);
+  assert.doesNotMatch(statements, /\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|GRANT|REVOKE|CALL|DO|EXECUTE)\b/i);
+  for (const [schema, name] of [
+    ['public', 'revisar_parceria_segura'], ['public', 'solicitar_campanha_segura'],
+    ['public', 'listar_ofertas_campanha'], ['public', 'ativar_campanha_segura'],
+    ['roleapp_security', 'admin_has_capability'], ['roleapp_security', 'admin_actor_id'],
+  ]) {
+    assert.ok(sql.includes(`('${schema}', '${name}')`));
   }
 });

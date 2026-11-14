@@ -1,6 +1,7 @@
 // Operações compatíveis com 20261109000200_partner_access_hardening.sql.
 // Cliente injetado: os testes não inicializam Supabase/Auth/Storage nem usam rede.
 import { validateDecision, partnershipRequestPayload } from '../utils/partnership.js';
+import { validateCampaignSelection } from '../utils/campaigns.js';
 export function createPartnerAccessService(client) {
   async function currentUserId(expectedUserId) {
     try {
@@ -71,10 +72,7 @@ export function createPartnerAccessService(client) {
 
     async criarCampanha({ idLocal, tipo, titulo, mensagem, interesses = [],
       faixaEtaria = 'Todos', raioKm = 5, duracaoDias = 7 }) {
-      if (!idLocal || !['destaque', 'visibilidade'].includes(tipo) ||
-          ![3, 7, 14].includes(duracaoDias)) {
-        throw new Error('Informe local, tipo e duração válidos.');
-      }
+      validateCampaignSelection({ idLocal, tipo, duracaoDias });
       return rpc('solicitar_campanha_segura', {
         p_id_local: String(idLocal), p_tipo: tipo,
         p_titulo: titulo?.trim() || '', p_mensagem: mensagem?.trim() || '',

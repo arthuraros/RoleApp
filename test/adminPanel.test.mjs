@@ -19,12 +19,15 @@ function fixture(options = {}) {
     navigation: { goBack: () => back.push(true) },
   }, {
     '../components/AdminPlacesPanel': { AdminPlacesPanel: 'AdminPlacesPanel' },
+    '../components/AdminCampaignsPanel': { AdminCampaignsPanel: 'AdminCampaignsPanel' },
+    '../components/AdminAccessPanel': { AdminAccessPanel: () => 'Funcionalidade em preparação' },
+    '../components/AdminSupportDraftForm': { AdminSupportDraftForm: 'AdminSupportDraftForm' },
     '../components/AccessGate': { AccessGate: props => {
       gates.push(props.role);
       return { type: 'AccessGate', props, children: props.children };
     } },
     '../services/adminService': { adminService: {
-      listarSolicitacoes: async () => { calls.push(['list']); if (options.failList) throw Error('Falha offline'); return requests; },
+      listarSolicitacoes: async () => { calls.push(['list']); if (options.failList) throw Error('Falha offline'); return options.listResult ?? requests; },
       encaminharParaDecisao: async (...args) => { calls.push(['forward', ...args]); return options.forward?.(); },
       decidirParceria: async payload => { calls.push(['decide', payload]); },
       obterDetalhesDecisao: async id => { calls.push(['detail', id]); return { justificativa: 'Decisão registrada na fixture' }; },
@@ -48,15 +51,52 @@ test('RA-11: quatro seções, Solicitações inicial e três etapas existentes',
   f.clickTab('Histórico'); assert.match(f.ui.text(), /Pedido aprovado/);
 });
 
+test('TF07: Solicitações exibe carregamento e recebe resultado sem bloquear a navegação', async () => {
+  const pending = deferred();
+  const f = fixture({ listResult: pending.promise });
+  assert.ok(f.ui.nodes().some(n => n.type === 'ActivityIndicator'));
+  f.clickTab('Locais'); f.clickTab('Campanhas'); f.clickTab('Administradores');
+  pending.resolve(requests); await f.ui.settle();
+  assert.equal(f.tab('Administradores').props.accessibilityState.selected, true);
+  f.clickTab('Solicitações');
+  assert.match(f.ui.text(), /Pedido em revisão/);
+  assert.equal(f.ui.nodes().some(n => n.type === 'ActivityIndicator'), false);
+  assert.deepEqual(f.calls, [['list']]);
+});
+
+test('TF07: voltar permanece disponível em todas as seções sem novas consultas', async () => {
+  const f = fixture(); await f.ui.settle();
+  for (const section of sections) {
+    f.clickTab(section);
+    const backButton = f.ui.nodes().find(n => n.type === 'TouchableOpacity' &&
+      n.children.some(child => child?.type === 'Ionicons' && child.props.name === 'arrow-back'));
+    assert.ok(backButton, section);
+    backButton.props.onPress();
+  }
+  assert.equal(f.back.length, sections.length);
+  assert.deepEqual(f.calls, [['list']]);
+});
+
 test('RA-11: seções futuras são informativas, sem formulário, refresh ou mutação', async () => {
   const f = fixture(); await f.ui.settle();
-  for (const name of ['Campanhas', 'Administradores']) {
+  for (const name of ['Administradores']) {
     f.clickTab(name); await f.ui.settle();
     assert.match(f.ui.text(), /Funcionalidade em preparação/);
     assert.equal(f.tab(name).props.accessibilityState.selected, true);
     assert.equal(f.ui.nodes().filter(n => n.type === 'TextInput').length, 0);
     assert.equal(f.ui.nodes().filter(n => n.type === 'TouchableOpacity' && n.props.accessibilityRole !== 'tab').length, 1); // voltar
     assert.ok(f.ui.nodes().filter(n => n.type === 'ScrollView').every(n => !n.props.refreshControl));
+    assert.equal(f.tab('Revisão'), undefined);
+  }
+  assert.deepEqual(f.calls, [['list']]);
+});
+
+test('suporte admin: seções usam consulta e preparação isoladas sem chamar serviços parceiros', async () => {
+  const f = fixture(); await f.ui.settle();
+  for (const [section, panel, resource] of [['Locais', 'AdminPlacesPanel', 'locais'], ['Campanhas', 'AdminCampaignsPanel', 'campanhas']]) {
+    f.clickTab(section); await f.ui.settle();
+    assert.ok(f.ui.nodes().some(n => n.type === panel));
+    assert.equal(f.ui.nodes().find(n => n.type === 'AdminSupportDraftForm').props.resource, resource);
     assert.equal(f.tab('Revisão'), undefined);
   }
   assert.deepEqual(f.calls, [['list']]);
@@ -86,32 +126,33 @@ test('RA-11: encaminhamento existente permanece funcional e bloqueia troca duran
   assert.ok(sections.every(name => !f.tab(name).props.disabled));
 });
 
-for (const decision of ['aprovado', 'rejeitado']) {
-  test(`RA-11: decisão ${decision} conserva validações, confirmação e payload`, async () => {
+test('RA-11: decisão rejeitada conserva validações, confirmação e payload', async () => {
     const f = fixture(); await f.ui.settle(); f.clickTab('Pendentes'); f.open('Pedido em análise');
-    const button = decision === 'aprovado' ? 'Aprovar parceria' : 'Reprovar solicitação';
-    // Descobre o texto real do botão existente de reprovação sem alterar a UI.
-    const decide = () => decision === 'aprovado' ? f.ui.button(button)
-      : f.ui.nodes().find(n => n.type === 'TouchableOpacity' && /^Reprovar/.test(text(n)));
+    const decide = () => f.ui.nodes().find(n => n.type === 'TouchableOpacity' && /^Reprovar/.test(text(n)));
     decide().props.onPress(); f.ui.render();
     assert.equal(f.calls.some(c => c[0] === 'decide'), false);
     assert.equal(f.ui.alerts.at(-1)[0], 'Justificativa obrigatória');
     f.ui.nodes().find(n => n.type === 'TextInput' && n.props.multiline).props.onChangeText('Justificativa da fixture offline');
-    if (decision === 'aprovado') {
-      f.ui.nodes().find(n => n.type === 'TextInput' && n.props.keyboardType === 'number-pad').props.onChangeText('42');
-      f.open('Confirmei a identidade'); f.open('Verifiquei possíveis');
-    }
     f.ui.render(); decide().props.onPress();
     assert.equal(f.calls.some(c => c[0] === 'decide'), false); // ainda aguarda confirmação
     assert.match(f.ui.alerts.at(-1)[0], /Confirmar/);
     await f.ui.alerts.at(-1)[2].find(b => b.text === 'Confirmar').onPress(); f.ui.render();
     const payload = f.calls.find(c => c[0] === 'decide')[1];
     assert.equal(payload.idSolicitacao, 2);
-    assert.equal(payload.decisao, decision);
-    assert.equal(payload.idLocal, decision === 'aprovado' ? 42 : null);
+    assert.equal(payload.decisao, 'rejeitado');
+    assert.equal(payload.idLocal, null);
     assert.equal(f.tab('Histórico').props.accessibilityState.selected, true);
-  });
-}
+});
+
+test('RA-11: aprovação fica bloqueada na interface até validar a RPC de vínculo/auditoria', async () => {
+  const f = fixture(); await f.ui.settle(); f.clickTab('Pendentes'); f.open('Pedido em análise');
+  const button = f.ui.button('Aprovação bloqueada');
+  assert.equal(button.props.disabled, true);
+  assert.match(f.ui.text(), /não cria o vínculo comercial e a auditoria exigidos/);
+  button.props.onPress();
+  assert.equal(f.ui.alerts.at(-1)[0], 'Aprovação bloqueada');
+  assert.equal(f.calls.some(c => c[0] === 'decide'), false);
+});
 
 test('RA-11: histórico continua consultando detalhes; erro de lista não bloqueia seções futuras', async () => {
   const f = fixture(); await f.ui.settle(); f.clickTab('Histórico'); f.open('Pedido aprovado'); await f.ui.settle();

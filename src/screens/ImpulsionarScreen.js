@@ -14,20 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { parceiroService } from '../services/parceiroService';
+import { CAMPAIGN_INTERESTS as ALL_INTERESTS, CAMPAIGN_AGE_RANGES as AGE_RANGES, CAMPAIGN_DURATIONS } from '../utils/campaigns.js';
 
-const ALL_INTERESTS = [
-  'Almoço barato',
-  'Happy hour',
-  'Música ao vivo',
-  'Lanches',
-  'Café',
-  'Vegano',
-  'Família',
-  'Universitários',
-  'Madrugada',
-];
-
-const AGE_RANGES = ['Todos', '18–24', '25–34', '35+'];
 
 export function ImpulsionarScreen({ navigation, route }) {
   const { user } = useAuth();
@@ -94,7 +82,7 @@ export function ImpulsionarScreen({ navigation, route }) {
     );
   };
 
-  const durations = offers.filter(offer => /*offer.tipo === mode &&*/ [3, 7, 14].includes(Number(offer.duracao_dias)))
+  const durations = offers.filter(offer => /*offer.tipo === mode &&*/ CAMPAIGN_DURATIONS.includes(Number(offer.duracao_dias)))
     .map(offer => ({
       days: Number(offer.duracao_dias), label: `${offer.duracao_dias} dias`,
       per_day: (Number(offer.valor_total) / Number(offer.duracao_dias)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),

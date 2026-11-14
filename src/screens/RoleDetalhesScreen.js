@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
   TextInput,
 } from 'react-native';
@@ -298,6 +299,7 @@ export function RoleDetalhesScreen({ route, navigation }) {
       locais: localSelecionado,
       itens: itensArray,
       custoEtapaTotal: custoEtapa,
+      imagem_url: localSelecionado.imagem_url || null,
     };
 
     setEtapasRascunho(prev => [...prev, novaEtapa]);
@@ -367,6 +369,7 @@ export function RoleDetalhesScreen({ route, navigation }) {
         id_local: e.id_local,
         etapa: e.etapa,
         itens: e.itens || [],
+        imagem_url: e.locais?.imagem_url || e.imagem_url || null,
       }));
 
       if (modoEdicao) {
@@ -591,24 +594,35 @@ export function RoleDetalhesScreen({ route, navigation }) {
         {/* LISTAGEM DAS ETAPAS */}
         {/* LISTAGEM DAS ETAPAS OU BOTÃO CENTRAL INICIAL */}
         {etapasRascunho.length > 0 ? (
-          etapasRascunho.map((etapaObj, index) => (
-            <View key={`etapa-${etapaObj.etapa}`} style={styles.timelineWrapper}>
-              <View style={styles.nodeCard}>
-                <View style={styles.nodeHeader}>
-                  <View style={styles.badgeEtapa}>
-                    <Text style={styles.badgeText}>Etapa {etapaObj.etapa}</Text>
-                  </View>
+  etapasRascunho.map((etapaObj, index) => (
+    <View key={`etapa-${etapaObj.etapa}`} style={styles.timelineWrapper}>
+      {/* Certifique-se de que nodeCard tenha overflow: 'hidden' */}
+      <View style={styles.nodeCard}>
+        
+        {/* Imagem colocada no topo, fora do nodeHeader */}
+        <Image
+          source={{
+            uri: etapaObj.imagem_url || etapaObj.locais?.imagem_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4',
+          }}
+          style={styles.etapaImage}
+          resizeMode="cover"
+        />
 
-                  <Text style={styles.localNome} numberOfLines={1}>
-                    {etapaObj.locais?.nome || 'Local'}
-                  </Text>
+        <View style={styles.nodeHeader}>
+          <View style={styles.badgeEtapa}>
+            <Text style={styles.badgeText}>Etapa {etapaObj.etapa}</Text>
+          </View>
 
-                  {statusRole !== 'realizado' && (
-                    <TouchableOpacity onPress={() => removerEtapaRascunho(index)}>
-                      <Feather name="trash-2" size={18} color="#EF4444" />
-                    </TouchableOpacity>
-                  )}
-                </View>
+          <Text style={styles.localNome} numberOfLines={1}>
+            {etapaObj.locais?.nome || 'Local'}
+          </Text>
+
+          {statusRole !== 'realizado' && (
+            <TouchableOpacity onPress={() => removerEtapaRascunho(index)}>
+              <Feather name="trash-2" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+        </View>
 
                 <Text style={styles.localEndereco} numberOfLines={2}>
                   {etapaObj.locais?.endereco || 'Endereço não informado'}
@@ -1100,11 +1114,15 @@ const styles = StyleSheet.create({
 
   nodeCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 15,
+    borderRadius: 16,
+    marginBottom: 14,
+    overflow: 'hidden', // Essencial para cortar a imagem nas bordas arredondadas do card
     elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    padding: 8
   },
 
   nodeHeader: {
@@ -1523,5 +1541,24 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontStyle: 'italic',
     marginBottom: 16,
+  },
+  etapaCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 14,
+    overflow: 'hidden', // Garante que a imagem respeite o borderRadius do card
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  etapaImage: {
+    width: '100%',
+    height: 120, // Altura da foto no topo do card
+    backgroundColor: '#E2E8F0',
+  },
+  etapaCardContent: {
+    padding: 16,
   },
 });

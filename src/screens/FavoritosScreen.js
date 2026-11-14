@@ -19,6 +19,7 @@ import { parceiroService } from '../services/parceiroService';
 import { categoriasService } from '../services/categoriasService';
 import { resolveHomeCategory, filterHomePlaces } from '../utils/homeFilters';
 import { responsiveMetrics } from '../utils/responsive';
+import { supabase } from '../services/supabase';
 
 export function FavoritosScreen({ navigation }) {
   const dimensions = useWindowDimensions();
@@ -46,6 +47,8 @@ export function FavoritosScreen({ navigation }) {
   const [catalog, setCatalog] = useState({ account: null, data: [], status: 'loading', version: 0 });
   const [matches, setMatches] = useState({ key: '', pigIds: null, advancedIds: null, status: 'loading' });
   const [, updateRemoving] = useState(0);
+  // Estado para armazenar as avaliações de cada local da lista (chave: id_local, valor: array de avaliações)
+  const [avaliacoesPorLocal, setAvaliacoesPorLocal] = useState({});
 
   // Estados do Modal de Filtros Avançados e Sliders
   const [isFilterVisible, setIsFilterVisible] = useState(false);
@@ -181,6 +184,43 @@ export function FavoritosScreen({ navigation }) {
     return () => { focused.current = false; generation.current += 1; };
   }, [reload]));
 
+  // Busca as avaliações de todos os locais carregados para calcular a média e quantidade em tempo real
+  useEffect(() => {
+    if (!locaisFiltrados || locaisFiltrados.length === 0) return;
+
+    let ativo = true;
+    const carregarAvaliacoesLocais = async () => {
+      try {
+        const idsLocais = locaisFiltrados
+          .map(l => l.id_local)
+          .filter(id => id && !String(id).startsWith('demo-'));
+
+        if (idsLocais.length === 0) return;
+
+        const { data, error } = await supabase
+          .from('avaliacoes_locais')
+          .select('id_local, nota')
+          .in('id_local', idsLocais);
+
+        if (error || !ativo) return;
+
+        // Agrupa as notas por id_local
+        const mapa = {};
+        data.forEach(item => {
+          if (!mapa[item.id_local]) mapa[item.id_local] = [];
+          mapa[item.id_local].push(item);
+        });
+
+        if (ativo) setAvaliacoesPorLocal(mapa);
+      } catch (e) {
+        console.warn('Erro ao carregar avaliações para os cards:', e);
+      }
+    };
+
+    carregarAvaliacoesLocais();
+    return () => { ativo = false; };
+  }, [favorites.data, search, selectedCategory]); // Atualiza quando a lista muda
+
   const catalogReady = catalog.account === account && catalog.status === 'ready';
   const activeCategory = resolveHomeCategory(selectedCategory, catalogReady ? catalog.data : []);
   const hasAnyCategory = Boolean(selectedCategory || advancedFilters.categoryIds.length > 0);
@@ -291,7 +331,13 @@ export function FavoritosScreen({ navigation }) {
               {selectedCategory ? `Nenhum favorito encontrado em ${activeCategory.name}${search ? ' para esta pesquisa' : ''}.` : 'Nenhum local favorito encontrado.'}
             </Text>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+          // Pega as avaliações deste local específico armazenadas no estado
+          const avaliacoesItem = avaliacoesPorLocal[item.id_local] || [];
+          const count = avaliacoesItem.length;
+          const media = count > 0 ? (avaliacoesItem.reduce((acc, r) => acc + Number(r.nota), 0) / count).toFixed(1) : null;
+
+          return (
             <View style={styles.card}>
               <View style={styles.imageContainer}>
                 <Image
@@ -316,15 +362,29 @@ export function FavoritosScreen({ navigation }) {
               <View style={styles.info}>
                 <Text style={styles.name}>{item.nome}</Text>
                 <Text style={styles.address}>{item.endereco}</Text>
-                <Text style={styles.price}>
-                  {item.preco_entrada === 0
-                    ? 'Entrada gratuita'
-                    : item.preco_entrada != null
-                      ? `Entrada: R$ ${item.preco_entrada}`
-                      : item.preco != null
-                        ? `Preço médio: R$ ${item.preco}`
-                        : 'Preço não informado'}
-                </Text>
+
+                {/* Linha com Preço à esquerda e Avaliação à direita no mesmo nível */}
+                <View style={styles.priceAndRatingRow}>
+                  <Text style={styles.price}>
+                    {item.preco_entrada === 0
+                      ? 'Entrada gratuita'
+                      : item.preco_entrada != null
+                        ? `Entrada: R$ ${item.preco_entrada}`
+                        : item.preco != null
+                          ? `Preço médio: R$ ${item.preco}`
+                          : 'Preço não informado'}
+                  </Text>
+
+                  {media ? (
+                    <View style={styles.cardRatingWrap}>
+                      <MaterialCommunityIcons name="star" size={16} color="#E4AA20" />
+                      <Text style={styles.cardRatingText}>{media} ({count})</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.cardNoRatingText}>Sem avaliações</Text>
+                  )}
+                </View>
+
                 <TouchableOpacity
                   style={styles.detailsButton}
                   onPress={() => {
@@ -338,7 +398,8 @@ export function FavoritosScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             </View>
-          )}
+          );
+        }}
         />
       )}
 
@@ -573,5 +634,26 @@ const styles = StyleSheet.create({
   applyButton: { backgroundColor: '#483AAE', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 20 },
   applyButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   closeButtonModal: { paddingVertical: 10, alignItems: 'center', marginTop: 5 },
-  closeButtonText: { color: '#DC2626', fontWeight: '600', fontSize: 14 }
+  closeButtonText: { color: '#DC2626', fontWeight: '600', fontSize: 14 },
+  priceAndRatingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardRatingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardRatingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E1848',
+  },
+  cardNoRatingText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
 });

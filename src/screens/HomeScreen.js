@@ -12,6 +12,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { resolveHomeCategory, filterHomePlaces } from '../utils/homeFilters';
+import { supabase } from '../services/supabase';
+
 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -58,6 +60,8 @@ export function HomeScreen({ navigation }) {
   const [favoritos, setFavoritos] = useState([]);
   const [destaqueAtivo, setDestaqueAtivo] = useState(0);
   useEffect(() => { setDestaqueAtivo(0); }, [layout.highlightInterval]);
+  // Estado para armazenar as avaliações de cada local da lista (chave: id_local, valor: array de avaliações)
+  const [avaliacoesPorLocal, setAvaliacoesPorLocal] = useState({});
   
   // Estados do Modal de Filtros
   const [isFilterVisible, setIsFilterVisible] = useState(false);
@@ -174,6 +178,43 @@ export function HomeScreen({ navigation }) {
       setDestaques(DESTAQUES_FALLBACK);
     }
   };
+
+
+  // Busca as avaliações de todos os locais carregados para calcular a média e quantidade em tempo real na Home
+  useEffect(() => {
+    if (!locais || locais.length === 0) return;
+
+    let ativo = true;
+    const carregarAvaliacoesLocais = async () => {
+      try {
+        const idsLocais = locais
+          .map(l => l.id_local)
+          .filter(id => id && !String(id).startsWith('demo-'));
+
+        if (idsLocais.length === 0) return;
+
+        const { data, error } = await supabase
+          .from('avaliacoes_locais')
+          .select('id_local, nota')
+          .in('id_local', idsLocais);
+
+        if (error || !ativo) return;
+
+        const mapa = {};
+        (data || []).forEach(item => {
+          if (!mapa[item.id_local]) mapa[item.id_local] = [];
+          mapa[item.id_local].push(item);
+        });
+
+        if (ativo) setAvaliacoesPorLocal(mapa);
+      } catch (e) {
+        console.warn('Erro ao carregar avaliações para os cards da Home:', e);
+      }
+    };
+
+    carregarAvaliacoesLocais();
+    return () => { ativo = false; };
+  }, [locais]); // Atualiza quando os locais, a busca ou a categoria mudam
 
   useEffect(() => {
     let active = true;
@@ -535,53 +576,76 @@ ListEmptyComponent={
 }
         viewabilityConfig={viewabilityConfig}
         onViewableItemsChanged={onViewableItemsChanged}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: item.imagem_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
-                style={styles.placeImage}
-                resizeMode="cover"
-              />
-              <TouchableOpacity
-                style={styles.favoriteButton}
-                onPress={() => alternarFavorito(item.id_local)}
-                accessibilityRole="button"
-                accessibilityLabel={favoritos.includes(item.id_local) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
-              >
-                <MaterialCommunityIcons
-                  name={favoritos.includes(item.id_local) ? 'heart' : 'heart-outline'}
-                  size={24}
-                  color="#DC2626"
+        renderItem={({ item }) => {
+          // Lê do estado preenchido pelo useEffect
+          const avaliacoesItem = avaliacoesPorLocal[item.id_local] || [];
+          const count = avaliacoesItem.length;
+          const media = count > 0
+            ? (avaliacoesItem.reduce((acc, r) => acc + Number(r.nota), 0) / count).toFixed(1)
+            : null;
+          return (
+            <View style={styles.card}>
+              <View style={styles.imageContainer}>
+                <Image
+                  source={{ uri: item.imagem_url || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4' }}
+                  style={styles.placeImage}
+                  resizeMode="cover"
                 />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.favoriteButton}
+                  onPress={() => alternarFavorito(item.id_local)}
+                  accessibilityRole="button"
+                  accessibilityLabel={favoritos.includes(item.id_local) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                >
+                  <MaterialCommunityIcons
+                    name={favoritos.includes(item.id_local) ? 'heart' : 'heart-outline'}
+                    size={24}
+                    color="#DC2626"
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.cardContent}>
+                <Text style={styles.nome}>{item.nome}</Text>
+                <Text style={styles.endereco}>{item.endereco}</Text>
+
+                {/* Linha que alinha Preço à esquerda e Avaliação à direita no mesmo nível */}
+                <View style={styles.priceAndRatingRow}>
+                  <Text style={styles.preco}>
+                    {item.preco === 0 || item.preco_entrada === 0
+                      ? 'Entrada gratuita'
+                      : item.preco != null
+                        ? `Preço: R$ ${item.preco}`
+                        : item.preco_entrada != null
+                          ? `Entrada: R$ ${item.preco_entrada}`
+                          : 'Preço não informado'}
+                  </Text>
+
+                  {media ? (
+                    <View style={styles.cardRatingWrap}>
+                      <MaterialCommunityIcons name="star" size={16} color="#E4AA20" />
+                      <Text style={styles.cardRatingText}>{media} ({count})</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.cardNoRatingText}>Sem avaliações</Text>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.detailsButton}
+                  onPress={() => {
+                    if (item.id_local && !String(item.id_local).startsWith('demo-')) {
+                      parceiroService.registrarMetrica({ idLocal: item.id_local, cliques: 1 }).catch(() => {});
+                    }
+                    navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item });
+                  }}
+                >
+                  <Text style={styles.detailsButtonText}>Ver detalhes</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.cardContent}>
-              <Text style={styles.nome}>{item.nome}</Text>
-              <Text style={styles.endereco}>{item.endereco}</Text>
-              <Text style={styles.preco}>
-                {item.preco === 0 || item.preco_entrada === 0
-                  ? 'Entrada gratuita'
-                  : item.preco != null
-                    ? `Preço: R$ ${item.preco}`
-                    : item.preco_entrada != null
-                      ? `Entrada: R$ ${item.preco_entrada}`
-                      : 'Preço não informado'}
-              </Text>
-              <TouchableOpacity
-                style={styles.detailsButton}
-                onPress={() => {
-                  if (item.id_local && !String(item.id_local).startsWith('demo-')) {
-                    parceiroService.registrarMetrica({ idLocal: item.id_local, cliques: 1 }).catch(() => {});
-                  }
-                  navigation.navigate('DetalhesLocal', { idLocal: item.id_local, local: item });
-                }}
-              >
-                <Text style={styles.detailsButtonText}>Ver detalhes</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+          );
+        }}
       />
 
       {/* Modal de Filtros Avançados com Sliders Funcionais */}
@@ -972,5 +1036,27 @@ const styles = StyleSheet.create({
   applyButton: { backgroundColor: '#483AAE', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 20 },
   applyButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
   closeButtonModal: { paddingVertical: 10, alignItems: 'center', marginTop: 5 },
-  closeButtonText: { color: '#DC2626', fontWeight: '600', fontSize: 14 }
+  closeButtonText: { color: '#DC2626', fontWeight: '600', fontSize: 14 },
+  priceAndRatingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardRatingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  cardRatingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E1848',
+  },
+  cardNoRatingText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+
 });
